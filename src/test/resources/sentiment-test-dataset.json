@@ -1,0 +1,404 @@
+{
+  "testCases": [
+    {
+      "id": 1,
+      "message": "I absolutely love this product! Best purchase ever!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 2,
+      "message": "Thank you for your help today.",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.3,
+      "expectedScoreMax": 0.7,
+      "category": "mild_positive"
+    },
+    {
+      "id": 3,
+      "message": "This is the worst experience I have ever had!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.6,
+      "category": "strong_negative"
+    },
+    {
+      "id": 4,
+      "message": "I am a bit disappointed with the delivery time.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.6,
+      "expectedScoreMax": -0.1,
+      "category": "mild_negative"
+    },
+    {
+      "id": 5,
+      "message": "Can you tell me my account balance?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.3,
+      "expectedScoreMax": 0.3,
+      "category": "neutral_question"
+    },
+    {
+      "id": 6,
+      "message": "I would like to update my shipping address.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.3,
+      "expectedScoreMax": 0.3,
+      "category": "neutral_request"
+    },
+    {
+      "id": 7,
+      "message": "Your team has been incredibly supportive and professional!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 8,
+      "message": "I am extremely frustrated with your service!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.6,
+      "category": "strong_negative"
+    },
+    {
+      "id": 9,
+      "message": "The product is okay, nothing special.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.3,
+      "expectedScoreMax": 0.3,
+      "category": "neutral_opinion"
+    },
+    {
+      "id": 10,
+      "message": "I have been waiting for 3 weeks and still no response!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.4,
+      "category": "strong_negative"
+    },
+    {
+      "id": 11,
+      "message": "Amazing customer service! Will recommend to friends.",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 12,
+      "message": "The item arrived damaged and I want a refund.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.8,
+      "expectedScoreMax": -0.3,
+      "category": "negative_complaint"
+    },
+    {
+      "id": 13,
+      "message": "What are your business hours?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_question"
+    },
+    {
+      "id": 14,
+      "message": "You guys are the best! Thank you so much!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.7,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 15,
+      "message": "This is unacceptable! I demand to speak to a manager!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.7,
+      "category": "strong_negative"
+    },
+    {
+      "id": 16,
+      "message": "I received my order today.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.3,
+      "expectedScoreMax": 0.3,
+      "category": "neutral_statement"
+    },
+    {
+      "id": 17,
+      "message": "Pretty good service overall, thanks.",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.2,
+      "expectedScoreMax": 0.6,
+      "category": "mild_positive"
+    },
+    {
+      "id": 18,
+      "message": "Not happy with the quality of this product.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.7,
+      "expectedScoreMax": -0.2,
+      "category": "mild_negative"
+    },
+    {
+      "id": 19,
+      "message": "Could you please send me the invoice?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_request"
+    },
+    {
+      "id": 20,
+      "message": "I am so happy with my purchase! Exceeded expectations!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.7,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 21,
+      "message": "Your website is confusing and hard to navigate.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.7,
+      "expectedScoreMax": -0.2,
+      "category": "negative_feedback"
+    },
+    {
+      "id": 22,
+      "message": "I need help with my password reset.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_request"
+    },
+    {
+      "id": 23,
+      "message": "Wonderful experience from start to finish!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.7,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 24,
+      "message": "This product broke after one day of use!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.9,
+      "expectedScoreMax": -0.4,
+      "category": "strong_negative"
+    },
+    {
+      "id": 25,
+      "message": "My order number is 12345.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_info"
+    },
+    {
+      "id": 26,
+      "message": "Thanks for the quick response!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.3,
+      "expectedScoreMax": 0.7,
+      "category": "mild_positive"
+    },
+    {
+      "id": 27,
+      "message": "I am never buying from you again!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.6,
+      "category": "strong_negative"
+    },
+    {
+      "id": 28,
+      "message": "The package was delivered to the wrong address.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.6,
+      "expectedScoreMax": -0.1,
+      "category": "negative_issue"
+    },
+    {
+      "id": 29,
+      "message": "Excellent quality and fast shipping!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 30,
+      "message": "It works fine I guess.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.3,
+      "category": "neutral_lukewarm"
+    },
+    {
+      "id": 31,
+      "message": "I appreciate your patience with me.",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.3,
+      "expectedScoreMax": 0.7,
+      "category": "mild_positive"
+    },
+    {
+      "id": 32,
+      "message": "Why is this taking so long?!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.8,
+      "expectedScoreMax": -0.3,
+      "category": "negative_impatient"
+    },
+    {
+      "id": 33,
+      "message": "Can I get a status update on my request?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.3,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_question"
+    },
+    {
+      "id": 34,
+      "message": "You have been so helpful, I really appreciate it!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 35,
+      "message": "This is ridiculous! Fix this immediately!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.7,
+      "category": "strong_negative"
+    },
+    {
+      "id": 36,
+      "message": "I would like to cancel my subscription.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.4,
+      "expectedScoreMax": 0.1,
+      "category": "neutral_request"
+    },
+    {
+      "id": 37,
+      "message": "Great job! Keep up the good work!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 38,
+      "message": "The support agent was rude and unhelpful.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.9,
+      "expectedScoreMax": -0.5,
+      "category": "strong_negative"
+    },
+    {
+      "id": 39,
+      "message": "Please confirm my appointment for tomorrow.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_request"
+    },
+    {
+      "id": 40,
+      "message": "I love how easy your app is to use!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.6,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 41,
+      "message": "Still waiting for my refund after a month!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.9,
+      "expectedScoreMax": -0.5,
+      "category": "strong_negative"
+    },
+    {
+      "id": 42,
+      "message": "Do you offer international shipping?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_question"
+    },
+    {
+      "id": 43,
+      "message": "Pleasantly surprised by the quality!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.5,
+      "expectedScoreMax": 0.9,
+      "category": "positive_surprise"
+    },
+    {
+      "id": 44,
+      "message": "Complete waste of money!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -1.0,
+      "expectedScoreMax": -0.7,
+      "category": "strong_negative"
+    },
+    {
+      "id": 45,
+      "message": "I am attaching the required documents.",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_info"
+    },
+    {
+      "id": 46,
+      "message": "Finally got it working! Thanks for your help!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.5,
+      "expectedScoreMax": 0.9,
+      "category": "positive_relief"
+    },
+    {
+      "id": 47,
+      "message": "Your prices are way too high!",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.7,
+      "expectedScoreMax": -0.3,
+      "category": "negative_complaint"
+    },
+    {
+      "id": 48,
+      "message": "How do I track my shipment?",
+      "expectedLabel": "neutral",
+      "expectedScoreMin": -0.2,
+      "expectedScoreMax": 0.2,
+      "category": "neutral_question"
+    },
+    {
+      "id": 49,
+      "message": "Five stars! Highly recommended!",
+      "expectedLabel": "positive",
+      "expectedScoreMin": 0.7,
+      "expectedScoreMax": 1.0,
+      "category": "strong_positive"
+    },
+    {
+      "id": 50,
+      "message": "I feel ignored and not valued as a customer.",
+      "expectedLabel": "negative",
+      "expectedScoreMin": -0.8,
+      "expectedScoreMax": -0.4,
+      "category": "negative_emotional"
+    }
+  ]
+}

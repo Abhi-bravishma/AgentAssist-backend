@@ -1,0 +1,31 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+
+# Environment
+.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Build
+build/
+out/
+
+# Test files
+test-knowledge.txt

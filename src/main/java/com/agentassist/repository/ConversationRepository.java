@@ -1,0 +1,10 @@
+package com.agentassist.repository;
+
+import com.agentassist.model.Conversation;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface ConversationRepository extends JpaRepository<Conversation, Long> {
+    Optional<Conversation> findByInteractionId(String interactionId);
+}
