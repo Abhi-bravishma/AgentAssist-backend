@@ -1,9 +1,7 @@
 package com.agentassist.service.processing;
 
-import com.agentassist.dto.responseDTO.AiAnalysisBundle;
-import com.agentassist.dto.responseDTO.KnowledgeSource;
-import com.agentassist.dto.responseDTO.OneShotResponse;
-import com.agentassist.dto.responseDTO.SuggestedResponse;
+import com.agentassist.ai.ProviderType;
+import com.agentassist.dto.responseDTO.*;
 import com.agentassist.model.MessageEntity;
 import com.agentassist.model.SenderType;
 import com.agentassist.service.analysis.AnalysisService;
@@ -28,10 +26,21 @@ public class ConversationProcessingService {
     private final TranslationService translationService;
     private final AnalysisService analysisService;
 
+    /**
+     * Process message with default provider (OpenAI)
+     */
     @Transactional
     public OneShotResponse processMessage(String interactionId, String from, String messageText) {
-        log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}",
-                interactionId, from, messageText.length());
+        return processMessage(interactionId, from, messageText, ProviderType.OPENAI);
+    }
+
+    /**
+     * Process message with specified provider or comparison mode
+     */
+    @Transactional
+    public OneShotResponse processMessage(String interactionId, String from, String messageText, ProviderType provider) {
+        log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}, provider: {}",
+                interactionId, from, messageText.length(), provider);
         long startTime = System.currentTimeMillis();
 
         // 1. Detect language
@@ -72,9 +81,16 @@ public class ConversationProcessingService {
         List<String> englishConversation = all.stream().map(MessageEntity::getEnglishText).toList();
         log.info("[Process] Conversation has {} messages", englishConversation.size());
 
-        // 6. Call AI
-        log.debug("[Process] Step 6: Calling AI for analysis...");
-        AiAnalysisBundle bundle = analysisService.analyzeConversation(englishConversation, english);
+        // 6. Call AI - handle comparison mode
+        log.debug("[Process] Step 6: Calling AI for analysis (provider: {})...", provider);
+
+        // For comparison mode, run both providers in parallel
+        if (provider == ProviderType.BOTH) {
+            return processWithComparison(saved, all, englishConversation, english, detectedLang, isCustomer, startTime);
+        }
+
+        // Single provider mode
+        AiAnalysisBundle bundle = analysisService.analyzeConversation(englishConversation, english, provider);
         log.info("[Process] AI analysis complete - overall: {}, current: {}",
                 bundle.getOverall_sentiment_score(), bundle.getCurrent_sentiment_score());
 
@@ -150,7 +166,9 @@ public class ConversationProcessingService {
         }
 
         // 9. Build response
+        long duration = System.currentTimeMillis() - startTime;
         OneShotResponse resp = OneShotResponse.builder()
+                .provider(provider)
                 .overallSentiment(bundle.getOverall_sentiment_score())
                 .currentSentiment(bundle.getCurrent_sentiment_score())
                 .summary(bundle.getSummary())
@@ -158,10 +176,92 @@ public class ConversationProcessingService {
                 .knowledgeSources(knowledgeSources)
                 .documentsFound(documentsFound)
                 .usedKnowledgeBase(usedKnowledgeBase)
+                .latencyMs(duration)
                 .build();
 
-        long duration = System.currentTimeMillis() - startTime;
         log.info("[Process] Message processing completed in {}ms", duration);
+
+        return resp;
+    }
+
+    /**
+     * Process message with both providers for comparison
+     */
+    private OneShotResponse processWithComparison(
+            MessageEntity saved,
+            List<MessageEntity> all,
+            List<String> englishConversation,
+            String english,
+            String detectedLang,
+            boolean isCustomer,
+            long startTime
+    ) {
+        log.info("[Process-Comparison] Running parallel analysis with OpenAI and Ollama...");
+
+        // Run both providers in parallel
+        ComparisonResponse comparison = analysisService.analyzeConversationComparison(englishConversation, english);
+
+        // Use OpenAI result for message sentiment update (primary provider)
+        if (isCustomer && comparison.getOpenai() != null && comparison.getOpenai().isSuccess()) {
+            saved.setSentiment(comparison.getOpenai().getSentimentLabel());
+            saved.setSentimentScore(comparison.getOpenai().getCurrentSentiment());
+            messageService.save(saved);
+            log.debug("[Process-Comparison] Updated message sentiment from OpenAI: {} ({})",
+                    comparison.getOpenai().getSentimentLabel(), comparison.getOpenai().getCurrentSentiment());
+        }
+
+        // Get suggestions from RAG (shared between providers)
+        List<SuggestedResponse> suggestions = Collections.emptyList();
+        List<KnowledgeSource> knowledgeSources = Collections.emptyList();
+        int documentsFound = 0;
+        boolean usedKnowledgeBase = false;
+
+        if (isCustomer) {
+            boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
+
+            if (analysisService.isRagEnabled() && !isSimpleMessage) {
+                log.info("[Process-Comparison] Using RAG for suggestions...");
+                var ragResult = analysisService.buildReplySuggestionsWithRag(all);
+                suggestions = ragResult.suggestions();
+                knowledgeSources = ragResult.knowledgeSources();
+                documentsFound = ragResult.documentsFound();
+                usedKnowledgeBase = ragResult.usedKnowledgeBase();
+            }
+        }
+
+        // Update comparison with RAG data
+        comparison.setKnowledgeSources(knowledgeSources);
+        comparison.setDocumentsFound(documentsFound);
+        comparison.setUsedKnowledgeBase(usedKnowledgeBase);
+
+        long duration = System.currentTimeMillis() - startTime;
+
+        // Build response with comparison data
+        // Use OpenAI values as primary for backwards compatibility
+        double overallSentiment = 0.0;
+        double currentSentiment = 0.0;
+        String summary = "";
+
+        if (comparison.getOpenai() != null && comparison.getOpenai().isSuccess()) {
+            overallSentiment = comparison.getOpenai().getOverallSentiment();
+            currentSentiment = comparison.getOpenai().getCurrentSentiment();
+            summary = comparison.getOpenai().getSummary();
+        }
+
+        OneShotResponse resp = OneShotResponse.builder()
+                .provider(ProviderType.BOTH)
+                .overallSentiment(overallSentiment)
+                .currentSentiment(currentSentiment)
+                .summary(summary)
+                .suggestedResponses(suggestions)
+                .knowledgeSources(knowledgeSources)
+                .documentsFound(documentsFound)
+                .usedKnowledgeBase(usedKnowledgeBase)
+                .latencyMs(duration)
+                .comparison(comparison)
+                .build();
+
+        log.info("[Process-Comparison] Comparison processing completed in {}ms", duration);
 
         return resp;
     }

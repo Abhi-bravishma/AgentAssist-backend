@@ -1,5 +1,6 @@
 package com.agentassist.dto.requestDTO;
 
+import com.agentassist.ai.ProviderType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -18,4 +19,10 @@ public class OneShotRequest {
     @NotBlank(message = "message is required")
     @Size(max = 10000, message = "message must not exceed 10000 characters")
     private String message;
+
+    /**
+     * AI provider to use for analysis.
+     * Options: "openai" (default), "ollama", "both" (comparison mode)
+     */
+    private ProviderType provider = ProviderType.OPENAI;
 }

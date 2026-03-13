@@ -1,5 +1,7 @@
 package com.agentassist.dto.responseDTO;
 
+import com.agentassist.ai.ProviderType;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,12 +12,19 @@ import java.util.List;
 /**
  * Response DTO for the one-shot message processing endpoint.
  * Contains sentiment analysis, summary, suggestions, and knowledge sources.
+ * When comparison mode is enabled (provider=both), includes results from both providers.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class OneShotResponse {
+
+    /**
+     * The provider used for this response (null in comparison mode)
+     */
+    private ProviderType provider;
 
     /**
      * Overall sentiment score for the entire conversation (-1 to 1).
@@ -52,4 +61,15 @@ public class OneShotResponse {
      * Whether knowledge base context was used for generating suggestions.
      */
     private boolean usedKnowledgeBase;
+
+    /**
+     * Processing latency in milliseconds
+     */
+    private Long latencyMs;
+
+    /**
+     * Comparison results when provider=both.
+     * Contains results from both OpenAI and Ollama for side-by-side comparison.
+     */
+    private ComparisonResponse comparison;
 }

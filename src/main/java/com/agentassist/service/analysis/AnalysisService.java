@@ -1,13 +1,10 @@
 package com.agentassist.service.analysis;
 
-import com.agentassist.ai.AiProvider;
+import com.agentassist.ai.DualAiProviderService;
+import com.agentassist.ai.ProviderType;
 import com.agentassist.dto.rag.RagSourceDocument;
-import com.agentassist.dto.rag.RagSuggestionRequest;
 import com.agentassist.dto.rag.RagSuggestionResponse;
-import com.agentassist.dto.responseDTO.AiAnalysisBundle;
-import com.agentassist.dto.responseDTO.AiAnalysisResult;
-import com.agentassist.dto.responseDTO.KnowledgeSource;
-import com.agentassist.dto.responseDTO.SuggestedResponse;
+import com.agentassist.dto.responseDTO.*;
 import com.agentassist.model.MessageEntity;
 import com.agentassist.model.SenderType;
 import com.agentassist.service.conversation.MessageService;
@@ -26,7 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AnalysisService {
 
-    private final AiProvider aiProvider;
+    private final DualAiProviderService dualAiProviderService;
     private final MessageService messageService;
     private final TranslationService translationService;
     private final RagClient ragClient;
@@ -34,16 +31,64 @@ public class AnalysisService {
     // -------------------------------------------------------------------------------------
     // CORE AI METHODS
     // -------------------------------------------------------------------------------------
+
+    /**
+     * Analyze conversation using default provider (OpenAI)
+     */
     public AiAnalysisBundle analyzeConversation(List<String> englishConversation, String latestMessage) {
-        return aiProvider.analyzeConversation(englishConversation, latestMessage);
+        return analyzeConversation(englishConversation, latestMessage, ProviderType.OPENAI);
     }
 
+    /**
+     * Analyze conversation using specified provider
+     */
+    public AiAnalysisBundle analyzeConversation(List<String> englishConversation, String latestMessage, ProviderType provider) {
+        return dualAiProviderService.analyzeConversation(provider, englishConversation, latestMessage);
+    }
+
+    /**
+     * Analyze conversation with both providers for comparison
+     */
+    public ComparisonResponse analyzeConversationComparison(List<String> englishConversation, String latestMessage) {
+        return dualAiProviderService.analyzeConversationComparison(englishConversation, latestMessage);
+    }
+
+    /**
+     * Analyze text using default provider
+     */
     public AiAnalysisResult analyzeText(String englishText) {
+        return analyzeText(englishText, ProviderType.OPENAI);
+    }
+
+    /**
+     * Analyze text using specified provider
+     */
+    public AiAnalysisResult analyzeText(String englishText, ProviderType provider) {
+        var aiProvider = dualAiProviderService.getProvider(provider);
+        if (aiProvider == null) {
+            log.warn("Provider {} not available for text analysis", provider);
+            return new AiAnalysisResult();
+        }
         return aiProvider.analyzeText(englishText);
     }
 
+    /**
+     * Compute overall sentiment using default provider
+     */
     public double computeOverallSentimentScore(List<String> englishUserMessages) {
+        return computeOverallSentimentScore(englishUserMessages, ProviderType.OPENAI);
+    }
+
+    /**
+     * Compute overall sentiment using specified provider
+     */
+    public double computeOverallSentimentScore(List<String> englishUserMessages, ProviderType provider) {
         if (englishUserMessages == null || englishUserMessages.isEmpty()) return 0.0;
+        var aiProvider = dualAiProviderService.getProvider(provider);
+        if (aiProvider == null) {
+            log.warn("Provider {} not available for sentiment computation", provider);
+            return 0.0;
+        }
         return aiProvider.computeOverallSentiment(englishUserMessages);
     }
 
@@ -53,6 +98,13 @@ public class AnalysisService {
 
     public String summarizeEnglish(String englishContext) {
         return analyzeText(englishContext).getSummary();
+    }
+
+    /**
+     * Check if a provider is available
+     */
+    public boolean isProviderAvailable(ProviderType provider) {
+        return dualAiProviderService.isProviderAvailable(provider);
     }
 
 
@@ -257,7 +309,10 @@ public class AnalysisService {
     // REGENERATE SUGGESTIONS
     // -------------------------------------------------------------------------------------
     public List<SuggestedResponse> regenerateSuggestions(String interactionId, String previousSuggestion) {
+        return regenerateSuggestions(interactionId, previousSuggestion, ProviderType.OPENAI);
+    }
 
+    public List<SuggestedResponse> regenerateSuggestions(String interactionId, String previousSuggestion, ProviderType provider) {
         var all = messageService.fetchByInteraction(interactionId);
         if (all.isEmpty()) return List.of();
 
@@ -272,6 +327,13 @@ public class AnalysisService {
                 .toList();
 
         if (englishList.isEmpty()) return List.of();
+
+        // Get the provider
+        var aiProvider = dualAiProviderService.getProvider(provider);
+        if (aiProvider == null) {
+            log.warn("Provider {} not available for suggestion regeneration", provider);
+            return List.of();
+        }
 
         // Call AI to regenerate with context about previous suggestion
         var bundle = aiProvider.regenerateSuggestions(englishList, latest.getEnglishText(), previousSuggestion);
