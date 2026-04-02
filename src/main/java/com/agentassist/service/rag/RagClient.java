@@ -62,6 +62,40 @@ public class RagClient {
     public RagSuggestionResponse getSuggestions(List<String> conversationHistory,
                                                  String latestMessage,
                                                  int suggestionCount) {
+        return getSuggestions(conversationHistory, latestMessage, suggestionCount, null);
+    }
+
+    /**
+     * Fetch suggestions from the RAG application with additional context.
+     *
+     * @param conversationHistory List of conversation messages
+     * @param latestMessage       The latest customer message
+     * @param suggestionCount     Number of suggestions to generate
+     * @param additionalContext   Additional context (e.g., policy data from Salesforce)
+     * @return RAG suggestion response with suggestions and source documents
+     */
+    public RagSuggestionResponse getSuggestions(List<String> conversationHistory,
+                                                 String latestMessage,
+                                                 int suggestionCount,
+                                                 String additionalContext) {
+        return getSuggestions(conversationHistory, latestMessage, suggestionCount, additionalContext, null);
+    }
+
+    /**
+     * Fetch suggestions from the RAG application with additional context and project filtering.
+     *
+     * @param conversationHistory List of conversation messages
+     * @param latestMessage       The latest customer message
+     * @param suggestionCount     Number of suggestions to generate
+     * @param additionalContext   Additional context (e.g., policy data from Salesforce)
+     * @param projectName         Project/Bank name for filtering (e.g., "ALLIANZ", "METRO"). Null = search all.
+     * @return RAG suggestion response with suggestions and source documents
+     */
+    public RagSuggestionResponse getSuggestions(List<String> conversationHistory,
+                                                 String latestMessage,
+                                                 int suggestionCount,
+                                                 String additionalContext,
+                                                 String projectName) {
         if (!ragClientConfig.isEnabled()) {
             log.debug("RAG integration is disabled");
             return createEmptyResponse();
@@ -72,7 +106,11 @@ public class RagClient {
                 .latestMessage(latestMessage)
                 .suggestionCount(suggestionCount)
                 .companyId(ragClientConfig.getCompanyId())
+                .additionalContext(additionalContext)
+                .projectName(projectName)
                 .build();
+
+        log.info("RAG request - projectName: {}", projectName != null ? projectName : "ALL");
 
         return callRagApi(request);
     }

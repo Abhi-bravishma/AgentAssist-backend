@@ -19,7 +19,9 @@ import org.springframework.context.annotation.Configuration;
         ),
         servers = {
                 @Server(url = "http://localhost:8080", description = "Local Development"),
-                @Server(url = "https://infobip.lab.bravishma.com/agentassist", description = "Production Server")
+                @Server(url = "https://bravishma-sovereign.eastus.cloudapp.azure.com/agent-assist", description = "Azure Server"),
+                @Server(url = "https://agent-assist.demosaiportal.com", description = "Azure Server"),
+                @Server(url = "https://infobip.lab.bravishma.com/agentassist", description = "Infobip Server")
         },
         security = @SecurityRequirement(name = "bearerAuth")
 )

@@ -12,41 +12,46 @@ spring.servlet.multipart:
 
 spring:
   datasource:
-#      url: jdbc:mysql://localhost:3306/agent_assist?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8
-#      username: root
-#      password: root
-
+      # Local MySQL (default)
       url: jdbc:mysql://localhost:3306/avaya_infinity?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8
+      # Remote MySQL (uncomment below and comment above to use remote)
+      # url: ${SPRING_DATASOURCE_URL:jdbc:mysql://135.222.41.146:3306/avaya_infinity?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8}
       username: root
       password: root
-      driver-class-name: com.mysql.cj.jdbc.Driver
+      driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:com.mysql.cj.jdbc.Driver}
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: false
-    database-platform: org.hibernate.dialect.MySQLDialect
+    database-platform: ${SPRING_JPA_DATABASE_PLATFORM:org.hibernate.dialect.MySQLDialect}
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:}
+      api-key: ${OPENAI_API_KEY:your-api-key-here}
       chat:
         options:
           model: ${OPENAI_MODEL:gpt-4o-mini}
           temperature: 0.3
     ollama:
-      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      base-url: ${OLLAMA_BASE_URL:http://135.222.41.146:11434}
+      init:
+        timeout: 120s
+        pull-model-strategy: never
       chat:
         options:
-          model: ${OLLAMA_MODEL:mistral:7b}
+          # model: ${OLLAMA_MODEL:mistral:7b}  # Commented - less accurate sentiment
+          model: ${OLLAMA_MODEL:llama3:8b}
           temperature: 0.2
+          num-predict: 2048
 
 # AI provider selection
 ai:
-  provider: ${AI_PROVIDER:openai}
+  provider: ${AI_PROVIDER:ollama}
   openai:
     model: ${OPENAI_MODEL:gpt-4o-mini}
     temperature: 0.2
   ollama:
-    model: ${OLLAMA_MODEL:mistral:7b}
+    # model: ${OLLAMA_MODEL:mistral:7b}  # Commented - less accurate sentiment
+    model: ${OLLAMA_MODEL:llama3:8b}
     temperature: 0.2
 
 # JWT configuration (IMPORTANT: Set JWT_SECRET env variable in production!)
@@ -69,6 +74,12 @@ rag:
   enabled: ${RAG_ENABLED:true}
   api-key: ${RAG_API_KEY:agent-assist-secret-key-change-in-production}
   company-id: ${RAG_COMPANY_ID:1}
+
+# Salesforce Integration (Policy & Claims)
+salesforce:
+  base-url: ${SALESFORCE_BASE_URL:https://salesforce.lab.bravishma.com}
+  timeout: ${SALESFORCE_TIMEOUT:30000}
+  enabled: ${SALESFORCE_ENABLED:true}
 
 # Logging
 logging:

@@ -47,4 +47,17 @@ public class RagSuggestionRequest {
      * Company ID for multi-tenant document filtering.
      */
     private Long companyId;
+
+    /**
+     * Additional context to include in prompt (e.g., customer policy data from Salesforce).
+     * This will be appended to the knowledge base context when generating suggestions.
+     */
+    private String additionalContext;
+
+    /**
+     * Project/Bank name for filtering documents.
+     * Examples: "ALLIANZ", "METRO", "HSBC"
+     * Optional - if null/empty, searches all projects.
+     */
+    private String projectName;
 }

@@ -1,78 +1,43 @@
 package com.agentassist.controller;
 
-import com.agentassist.dto.responseDTO.ConversationDto;
-import com.agentassist.dto.responseDTO.ConversationSummaryResponse;
-import com.agentassist.dto.responseDTO.MessageDto;
-import com.agentassist.mapper.MessageMapper;
-import com.agentassist.model.Conversation;
-import com.agentassist.service.analysis.AnalysisService;
-import com.agentassist.service.conversation.ConversationService;
-import com.agentassist.service.conversation.MessageService;
+import com.agentassist.dto.requestDTO.ConversationRequest;
+import com.agentassist.dto.responseDTO.ConversationResponse;
+import com.agentassist.service.processing.ConversationProcessingService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
-
+/**
+ * Controller for processing conversation messages.
+ * Main endpoint for the Agent Assist functionality.
+ */
 @RestController
-@RequestMapping("/api/v1/conversation")
+@RequestMapping("/api/v1/agent-assistant")
 @RequiredArgsConstructor
-@Tag(name = "Conversation", description = "Fetch full conversation with messages")
+@Tag(name = "Conversation", description = "Process conversation messages and get AI-powered suggestions")
 public class ConversationController {
 
-    private final ConversationService conversationService;
-    private final MessageService messageService;
-    private final MessageMapper messageMapper;
-    private final AnalysisService analysisService;
+    private final ConversationProcessingService processor;
 
-    // --------------------------------------------------------------------------------------
-    // FETCH FULL CONVERSATION WITH SORTED MESSAGES
-    // --------------------------------------------------------------------------------------
-    @GetMapping("/{interactionId}")
-    public ResponseEntity<ConversationDto> getConversation(@PathVariable String interactionId) {
-
-        Conversation conv = conversationService.getOrCreate(interactionId);
-
-        List<MessageDto> messages = messageService.fetchByInteraction(interactionId).stream()
-                .map(messageMapper::toDto)
-                .sorted(Comparator.comparing(
-                        m -> m.getCreatedAt() == null ? Instant.EPOCH : m.getCreatedAt()
-                ))
-                .toList();
-
-        ConversationDto dto = new ConversationDto();
-        dto.setInteractionId(conv.getInteractionId());
-        dto.setCreatedAt(conv.getCreatedAt());
-        dto.setUpdatedAt(conv.getUpdatedAt());
-        dto.setBaseLanguage(conv.getBaseLanguage());
-        dto.setMessages(messages);
-
-        return ResponseEntity.ok(dto);
+    @PostMapping("/process")
+    @Operation(summary = "Process a conversation message",
+               description = "Analyzes the message, detects sentiment, generates summary and reply suggestions using RAG")
+    public ResponseEntity<ConversationResponse> process(@Valid @RequestBody ConversationRequest request) {
+        if(request.getProjectName().isEmpty() || request.getProjectName() == null){
+            System.out.println("Setting default project name to SCB");
+            request.setProjectName("SCB");
+        }
+        return ResponseEntity.ok(
+                processor.processMessage(
+                        request.getInteractionId(),
+                        request.getFrom(),
+                        request.getMessage(),
+                        request.getMobileNumber(),
+                        request.getProjectName()
+                )
+        );
     }
-
-    // --------------------------------------------------------------------------------------
-    // CONVERSATION SUMMARY
-    // --------------------------------------------------------------------------------------
-    @GetMapping("/{interactionId}/summary")
-    public ResponseEntity<ConversationSummaryResponse> summary(@PathVariable String interactionId) {
-
-        Conversation conv = conversationService.getOrCreate(interactionId);
-
-        // 1. Get basic summary from DB (ONE METHOD ONLY)
-        ConversationSummaryResponse resp = messageService.getDBSummary(interactionId);
-
-        // 2. Add missing fields
-        resp.setInteractionId(interactionId);
-        resp.setBaseLanguage(conv.getBaseLanguage());
-
-        // 3. Add AI summary
-        String summary = analysisService.buildConversationSummary(interactionId);
-        resp.setSummary(summary);
-
-        return ResponseEntity.ok(resp);
-    }
-
 }

@@ -12,7 +12,7 @@ public class AiConfig {
     /**
      * Active AI provider: "openai" or "ollama"
      */
-    private String provider = "openai";
+    private String provider = "ollama";
 
     private OpenAiConfig openai = new OpenAiConfig();
     private OllamaConfig ollama = new OllamaConfig();

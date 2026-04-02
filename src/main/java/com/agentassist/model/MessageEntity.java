@@ -25,12 +25,12 @@ public class MessageEntity {
     @Enumerated(EnumType.STRING)
     private SenderType sender;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String originalText;
 
     private String originalLanguage;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String englishText;
 
     private String sentiment;

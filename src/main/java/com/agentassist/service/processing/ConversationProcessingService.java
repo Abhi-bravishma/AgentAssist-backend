@@ -1,14 +1,21 @@
 package com.agentassist.service.processing;
 
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
+import com.agentassist.dto.responseDTO.ConversationResponse;
 import com.agentassist.dto.responseDTO.KnowledgeSource;
-import com.agentassist.dto.responseDTO.OneShotResponse;
 import com.agentassist.dto.responseDTO.SuggestedResponse;
+import com.agentassist.dto.salesforce.CustomerPolicyData;
 import com.agentassist.model.MessageEntity;
 import com.agentassist.model.SenderType;
 import com.agentassist.service.analysis.AnalysisService;
+import com.agentassist.service.checklist.ChecklistCacheService;
+import com.agentassist.service.checklist.ChecklistService;
+import com.agentassist.service.checklist.ChecklistService.ChecklistContext;
+import com.agentassist.service.checklist.ChecklistService.OperationType;
 import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
+import com.agentassist.service.salesforce.PolicyCacheService;
+import com.agentassist.service.salesforce.SalesforceClient;
 import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +34,35 @@ public class ConversationProcessingService {
     private final MessageService messageService;
     private final TranslationService translationService;
     private final AnalysisService analysisService;
+    private final SalesforceClient salesforceClient;
+    private final PolicyCacheService policyCacheService;
+    private final ChecklistService checklistService;
+    private final ChecklistCacheService checklistCacheService;
 
+    /**
+     * Process message without mobile number (backward compatible).
+     */
     @Transactional
-    public OneShotResponse processMessage(String interactionId, String from, String messageText) {
-        log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}",
-                interactionId, from, messageText.length());
+    public ConversationResponse processMessage(String interactionId, String from, String messageText) {
+        return processMessage(interactionId, from, messageText, null, null);
+    }
+
+    /**
+     * Process message with optional mobile number for Salesforce policy lookup (backward compatible).
+     */
+    @Transactional
+    public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber) {
+        return processMessage(interactionId, from, messageText, mobileNumber, null);
+    }
+
+    /**
+     * Process message with optional mobile number and project name for filtering.
+     */
+    @Transactional
+    public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber, String projectName) {
+        log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}, hasMobile: {}, projectName: {}",
+                interactionId, from, messageText.length(), mobileNumber != null && !mobileNumber.isBlank(),
+                projectName != null ? projectName : "ALL");
         long startTime = System.currentTimeMillis();
 
         // 1. Detect language
@@ -66,17 +97,81 @@ public class ConversationProcessingService {
         );
         log.info("[Process] Message saved with ID: {}", saved.getId());
 
-        // 5. Build english conversation
+        // 5. Build conversation histories (English + Original for multi-language detection)
         log.debug("[Process] Step 5: Building conversation history...");
         List<MessageEntity> all = messageService.fetchByInteraction(interactionId);
-        List<String> englishConversation = all.stream().map(MessageEntity::getEnglishText).toList();
+//        List<String> englishConversation = all.stream().map(MessageEntity::getEnglishText).toList();
+//        List<String> originalConversation = all.stream().map(MessageEntity::getOriginalText).toList();
+
+        List<String> englishConversation = all.stream()
+                .map(m -> m.getSender().name().equalsIgnoreCase("user") ? "agent" : m.getSender() + " : " + m.getEnglishText())
+                .toList();
+        List<String> originalConversation = all.stream()
+                .map(m -> m.getSender().name().equalsIgnoreCase("user") ? "agent" : m.getSender() + " : " + m.getOriginalText())
+                .toList();
+
         log.info("[Process] Conversation has {} messages", englishConversation.size());
 
-        // 6. Call AI
+        // 5.5 Policy data - NOT fetched automatically on first message
+        // Salesforce is only called when needed (fee waiver, home loan via checklist)
+        CustomerPolicyData policyData = null;
+
+        // 5.6 Detect and build checklist context (fee waiver, home loan closure)
+        log.debug("[Process] Step 5.6: Checking for checklist operations...");
+        ChecklistContext checklistContext = checklistCacheService.get(interactionId);
+        boolean checklistDetectedThisMessage = false;
+        boolean useChecklistForThisMessage = false;
+
+        // Always detect intent for current message (filtered by projectName)
+        // METRO: FEE_WAIVER, HOME_LOAN_CLOSURE | ALLIANZ: POLICY, CLAIMS | null: ALL
+        ChecklistContext currentMessageContext = checklistService.buildChecklistContext(englishConversation, originalConversation, mobileNumber, projectName);
+        OperationType currentIntent = currentMessageContext.operationType();
+        log.info("[Process] Current message intent: {} (project: {})", currentIntent, projectName != null ? projectName : "ALL");
+
+        if (currentIntent != OperationType.NONE) {
+            // Current message is fee waiver or home loan - use checklist flow
+            checklistContext = currentMessageContext;
+            checklistCacheService.put(interactionId, checklistContext);
+            checklistDetectedThisMessage = true;
+            useChecklistForThisMessage = true;
+            log.info("[Process] Checklist operation detected: {}, hasCustomerData: {}",
+                    checklistContext.operationType(), checklistContext.hasContext());
+        } else if (checklistContext != null && checklistContext.hasContext()) {
+            // Current message is GENERAL but we have cached Salesforce data
+            // Use cached data as context but NOT the checklist-specific prompt
+            log.info("[Process] Using cached Salesforce data for GENERAL query (cached operation: {})",
+                    checklistContext.operationType());
+            useChecklistForThisMessage = false; // Don't use checklist prompt
+        }
+
+        // 6. Call AI with appropriate context
         log.debug("[Process] Step 6: Calling AI for analysis...");
-        AiAnalysisBundle bundle = analysisService.analyzeConversation(englishConversation, english);
-        log.info("[Process] AI analysis complete - overall: {}, current: {}",
-                bundle.getOverall_sentiment_score(), bundle.getCurrent_sentiment_score());
+        AiAnalysisBundle bundle;
+
+        // Build context from cached Salesforce data if available
+        String salesforceContext = null;
+        if (checklistContext != null && checklistContext.hasContext()) {
+            salesforceContext = checklistContext.getFullContext();
+        }
+        String policyContext = policyData != null ? policyData.toAiContext() : salesforceContext;
+
+        if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
+            // Use checklist-aware analysis (fee waiver / home loan closure)
+            log.info("[Process] Using checklist-aware AI analysis for: {}", checklistContext.operationType());
+            bundle = analysisService.analyzeConversationWithChecklist(
+                    englishConversation, english,
+                    checklistContext.getFullContext(),
+                    checklistContext.operationType().name());
+        } else {
+            // Standard analysis - use cached Salesforce data if available
+            log.info("[Process] Using standard AI analysis with context: {}", policyContext != null ? "yes" : "no");
+            bundle = analysisService.analyzeConversationWithContext(
+                    englishConversation, english, policyContext);
+        }
+
+        log.info("[Process] AI analysis complete - overall: {}, current: {}, usedChecklist: {}",
+                bundle.getOverall_sentiment_score(), bundle.getCurrent_sentiment_score(),
+                checklistContext != null && checklistContext.hasContext());
 
         // 7. Update last message sentiment
         if (isCustomer) {
@@ -99,21 +194,101 @@ public class ConversationProcessingService {
             log.info("[Process] Skipping suggestions for agent message");
             suggestions = Collections.emptyList();
             knowledgeSources = Collections.emptyList();
+        } else if (currentMessageContext.wasIntentFiltered()) {
+            // Intent was detected but filtered out due to project mismatch
+            // Provide helpful message instead of going to RAG
+            log.info("[Process] Intent {} was filtered for project {}, providing helpful message",
+                    currentMessageContext.filteredIntent(), projectName);
+            String filteredIntentMessage = getFilteredIntentMessage(currentMessageContext.filteredIntent(), projectName);
+            SuggestedResponse sr = new SuggestedResponse();
+            sr.setEnglishReply(filteredIntentMessage);
+            if (!detectedLang.equalsIgnoreCase("en")) {
+                sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, detectedLang));
+            }
+            suggestions = Collections.singletonList(sr);
+            knowledgeSources = Collections.emptyList();
+        } else if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
+            // CUSTOMER-SPECIFIC QUERY (POLICY/CLAIMS/FEE_WAIVER/HOME_LOAN_CLOSURE with Salesforce data)
+            // Use checklist for customer-specific answers, but also check RAG for supplementary info
+            log.info("[Process] Customer-specific query for: {}, checking RAG first...",
+                    checklistContext.operationType());
+
+            boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
+            boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
+
+            // First, try RAG to see if there are relevant documents
+            if (analysisService.isRagEnabled() && !isSimpleMessage) {
+                var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
+                documentsFound = ragResult.documentsFound();
+                knowledgeSources = ragResult.knowledgeSources();
+                usedKnowledgeBase = ragResult.usedKnowledgeBase();
+
+                if (documentsFound > 0) {
+                    // RAG found relevant documents - use RAG suggestions
+                    log.info("[Process] RAG found {} documents, using RAG suggestions", documentsFound);
+                    suggestions = ragResult.suggestions();
+                } else {
+                    // No RAG documents - use checklist suggestions (Salesforce data)
+                    log.info("[Process] No RAG documents, using CHECKLIST suggestions for: {}",
+                            checklistContext.operationType());
+                    suggestions = bundle.getSuggestions().stream()
+                            .map(s -> {
+                                SuggestedResponse sr = new SuggestedResponse();
+                                sr.setEnglishReply(s);
+                                if (!isEnglishUser) {
+                                    sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                                }
+                                return sr;
+                            }).toList();
+                }
+            } else {
+                // RAG disabled or simple message - use checklist directly
+                log.info("[Process] Using CHECKLIST suggestions (RAG disabled/simple) for: {}",
+                        checklistContext.operationType());
+                suggestions = bundle.getSuggestions().stream()
+                        .map(s -> {
+                            SuggestedResponse sr = new SuggestedResponse();
+                            sr.setEnglishReply(s);
+                            if (!isEnglishUser) {
+                                sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                            }
+                            return sr;
+                        }).toList();
+                knowledgeSources = Collections.emptyList();
+            }
+            log.info("[Process] Generated {} suggestions", suggestions.size());
         } else {
+            // GENERAL QUERY - Always use RAG for knowledge base lookup
+            // Even if we have cached Salesforce data, RAG should be called for general questions
             // Skip RAG for greetings and simple messages - no need for knowledge base lookup
             boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
 
             if (analysisService.isRagEnabled() && !isSimpleMessage) {
-                // Use RAG for suggestions with knowledge base context
-                // Pass the already-fetched messages to avoid transaction isolation issues
-                log.info("[Process] Using RAG for suggestions with {} messages...", all.size());
-                var ragResult = analysisService.buildReplySuggestionsWithRag(all);
+                // Use RAG for suggestions with knowledge base context + policy data
+                log.info("[Process] Using RAG for suggestions with {} messages, projectName: {}...", all.size(), projectName);
+                var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
                 suggestions = ragResult.suggestions();
                 knowledgeSources = ragResult.knowledgeSources();
                 documentsFound = ragResult.documentsFound();
                 usedKnowledgeBase = ragResult.usedKnowledgeBase();
                 log.info("[Process] RAG returned {} suggestions, {} knowledge sources",
                         suggestions.size(), knowledgeSources.size());
+
+                // If RAG found no documents but we have checklist context, use AI suggestions with that context
+                // This ensures customer-specific questions get answered with actual customer data
+                if (documentsFound == 0 && checklistContext != null && checklistContext.hasContext() && !bundle.getSuggestions().isEmpty()) {
+                    log.info("[Process] No RAG documents found but have checklist context, using AI suggestions instead");
+                    boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
+                    suggestions = bundle.getSuggestions().stream()
+                            .map(s -> {
+                                SuggestedResponse sr = new SuggestedResponse();
+                                sr.setEnglishReply(s);
+                                if (!isEnglishUser) {
+                                    sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                                }
+                                return sr;
+                            }).toList();
+                }
             } else if (isSimpleMessage) {
                 // Skip RAG for greetings - use AI suggestions directly
                 log.info("[Process] Simple message detected, skipping RAG...");
@@ -149,8 +324,39 @@ public class ConversationProcessingService {
             }
         }
 
-        // 9. Build response
-        OneShotResponse resp = OneShotResponse.builder()
+        // 9. Build response with policy data and checklist info
+        // Get policyData from checklistContext if available
+        CustomerPolicyData effectivePolicyData = policyData;
+        if (effectivePolicyData == null && checklistContext != null && checklistContext.policyData() != null) {
+            effectivePolicyData = checklistContext.policyData();
+        }
+
+        String customerName = null;
+        if (checklistContext != null && checklistContext.creditCardData() != null) {
+            customerName = checklistContext.creditCardData().getCustomerName();
+        } else if (checklistContext != null && checklistContext.homeLoanData() != null) {
+            customerName = checklistContext.homeLoanData().getCustomerName();
+        } else if (checklistContext != null && checklistContext.policyData() != null) {
+            customerName = checklistContext.policyData().getCustomerName();
+        } else if (effectivePolicyData != null) {
+            customerName = effectivePolicyData.getCustomerName();
+        }
+
+        int creditCardsFound = checklistContext != null && checklistContext.creditCardData() != null
+                && checklistContext.creditCardData().getCreditCards() != null
+                ? checklistContext.creditCardData().getCreditCards().size() : 0;
+
+        int homeLoansFound = checklistContext != null && checklistContext.homeLoanData() != null
+                && checklistContext.homeLoanData().getHomeLoans() != null
+                ? checklistContext.homeLoanData().getHomeLoans().size() : 0;
+
+        int policiesFound = effectivePolicyData != null && effectivePolicyData.getPolicies() != null
+                ? effectivePolicyData.getPolicies().size() : 0;
+
+        int claimsFound = effectivePolicyData != null && effectivePolicyData.getClaims() != null
+                ? effectivePolicyData.getClaims().size() : 0;
+
+        ConversationResponse resp = ConversationResponse.builder()
                 .overallSentiment(bundle.getOverall_sentiment_score())
                 .currentSentiment(bundle.getCurrent_sentiment_score())
                 .summary(bundle.getSummary())
@@ -158,12 +364,46 @@ public class ConversationProcessingService {
                 .knowledgeSources(knowledgeSources)
                 .documentsFound(documentsFound)
                 .usedKnowledgeBase(usedKnowledgeBase)
+                .usedPolicyData(effectivePolicyData != null)
+                .customerName(customerName)
+                .policiesFound(policiesFound)
+                .claimsFound(claimsFound)
+                .usedChecklist(checklistContext != null && checklistContext.hasContext())
+                .checklistOperation(checklistContext != null && checklistContext.operationType() != OperationType.NONE
+                        ? checklistContext.operationType().name() : null)
+                .creditCardsFound(creditCardsFound)
+                .homeLoansFound(homeLoansFound)
+                .projectName(projectName)
                 .build();
 
         long duration = System.currentTimeMillis() - startTime;
         log.info("[Process] Message processing completed in {}ms", duration);
 
         return resp;
+    }
+
+    /**
+     * Get a helpful message when an intent is filtered out due to project mismatch.
+     */
+    private String getFilteredIntentMessage(OperationType filteredIntent, String projectName) {
+        String projectDisplay = projectName != null ? projectName : "this service";
+
+        return switch (filteredIntent) {
+            case POLICY -> "I'm sorry, but I don't have access to insurance policy information through " + projectDisplay + ". " +
+                    "This service handles banking inquiries like credit card fee waivers and home loan closures. " +
+                    "For insurance policy questions, please contact your insurance provider directly.";
+            case CLAIMS -> "I'm sorry, but I don't have access to insurance claims information through " + projectDisplay + ". " +
+                    "This service handles banking inquiries like credit card fee waivers and home loan closures. " +
+                    "For insurance claims questions, please contact your insurance provider directly.";
+            case FEE_WAIVER -> "I'm sorry, but credit card fee waiver services are not available through " + projectDisplay + ". " +
+                    "This service handles insurance-related inquiries like policy details and claims. " +
+                    "For banking inquiries, please contact your bank directly.";
+            case HOME_LOAN_CLOSURE -> "I'm sorry, but home loan closure services are not available through " + projectDisplay + ". " +
+                    "This service handles insurance-related inquiries like policy details and claims. " +
+                    "For banking inquiries, please contact your bank directly.";
+            default -> "I'm sorry, but I cannot help with that request through " + projectDisplay + ". " +
+                    "Please contact the appropriate service provider for assistance.";
+        };
     }
 
     /**

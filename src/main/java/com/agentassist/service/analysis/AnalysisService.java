@@ -6,6 +6,7 @@ import com.agentassist.dto.rag.RagSuggestionRequest;
 import com.agentassist.dto.rag.RagSuggestionResponse;
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
+import com.agentassist.dto.responseDTO.FollowUpCheckResponse;
 import com.agentassist.dto.responseDTO.KnowledgeSource;
 import com.agentassist.dto.responseDTO.SuggestedResponse;
 import com.agentassist.model.MessageEntity;
@@ -36,6 +37,39 @@ public class AnalysisService {
     // -------------------------------------------------------------------------------------
     public AiAnalysisBundle analyzeConversation(List<String> englishConversation, String latestMessage) {
         return aiProvider.analyzeConversation(englishConversation, latestMessage);
+    }
+
+    /**
+     * Analyze conversation with additional policy context from Salesforce.
+     */
+    public AiAnalysisBundle analyzeConversationWithContext(List<String> englishConversation,
+                                                            String latestMessage,
+                                                            String policyContext) {
+        if (policyContext == null || policyContext.isBlank()) {
+            return analyzeConversation(englishConversation, latestMessage);
+        }
+        return aiProvider.analyzeConversationWithContext(englishConversation, latestMessage, policyContext);
+    }
+
+    /**
+     * Analyze conversation with checklist context (fee waiver, home loan closure).
+     * Uses the checklist guide + customer-specific data to generate targeted suggestions.
+     *
+     * @param englishConversation List of conversation messages in English
+     * @param latestMessage       The latest user message
+     * @param checklistContext    Combined checklist guide + customer data context
+     * @param operationType       Type of operation (FEE_WAIVER, HOME_LOAN_CLOSURE)
+     * @return Analysis bundle with sentiment scores, summary, and checklist-aware suggestions
+     */
+    public AiAnalysisBundle analyzeConversationWithChecklist(List<String> englishConversation,
+                                                              String latestMessage,
+                                                              String checklistContext,
+                                                              String operationType) {
+        if (checklistContext == null || checklistContext.isBlank()) {
+            return analyzeConversation(englishConversation, latestMessage);
+        }
+        log.info("Analyzing conversation with checklist context for operation: {}", operationType);
+        return aiProvider.analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType);
     }
 
     public AiAnalysisResult analyzeText(String englishText) {
@@ -132,6 +166,29 @@ public class AnalysisService {
      * @return Result containing suggestions and knowledge sources used
      */
     public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages) {
+        return buildReplySuggestionsWithRag(messages, null);
+    }
+
+    /**
+     * Build reply suggestions using RAG with pre-fetched messages and policy context.
+     *
+     * @param messages      The list of messages (already fetched within same transaction)
+     * @param policyContext Customer policy data context from Salesforce (optional)
+     * @return Result containing suggestions and knowledge sources used
+     */
+    public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages, String policyContext) {
+        return buildReplySuggestionsWithRag(messages, policyContext, null);
+    }
+
+    /**
+     * Build reply suggestions using RAG with pre-fetched messages, policy context, and project filtering.
+     *
+     * @param messages      The list of messages (already fetched within same transaction)
+     * @param policyContext Customer policy data context from Salesforce (optional)
+     * @param projectName   Project/Bank name for filtering documents (optional, null = search all)
+     * @return Result containing suggestions and knowledge sources used
+     */
+    public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages, String policyContext, String projectName) {
         if (messages == null || messages.isEmpty()) {
             return new RagSuggestionsResult(List.of(), List.of(), 0, false);
         }
@@ -159,10 +216,12 @@ public class AnalysisService {
                 ? latest.getEnglishText()
                 : latest.getOriginalText();
 
-        // Call RAG API
-        log.info("Fetching suggestions from RAG for latest message: {}",
-                latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage);
-        RagSuggestionResponse ragResponse = ragClient.getSuggestions(conversationHistory, latestMessage, 3);
+        // Call RAG API with policy context and project name if available
+        log.info("Fetching suggestions from RAG for latest message: {}, hasPolicy: {}, projectName: {}",
+                latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage,
+                policyContext != null,
+                projectName != null ? projectName : "ALL");
+        RagSuggestionResponse ragResponse = ragClient.getSuggestions(conversationHistory, latestMessage, 1, policyContext, projectName);
 
         // Handle blocked response
         if (ragResponse.isBlocked()) {
@@ -257,6 +316,21 @@ public class AnalysisService {
     // REGENERATE SUGGESTIONS
     // -------------------------------------------------------------------------------------
     public List<SuggestedResponse> regenerateSuggestions(String interactionId, String previousSuggestion) {
+        return regenerateSuggestions(interactionId, previousSuggestion, null, null);
+    }
+
+    /**
+     * Regenerate suggestions with optional checklist context.
+     * When checklist context is provided, the regeneration will use actual customer data.
+     *
+     * @param interactionId    The conversation interaction ID
+     * @param previousSuggestion The previous suggestion to reword
+     * @param checklistContext Customer data context (card numbers, amounts, eligibility)
+     * @param customerName     Customer name for personalization
+     * @return List of suggested responses with same data, different wording
+     */
+    public List<SuggestedResponse> regenerateSuggestions(String interactionId, String previousSuggestion,
+                                                          String checklistContext, String customerName) {
 
         var all = messageService.fetchByInteraction(interactionId);
         if (all.isEmpty()) return List.of();
@@ -273,8 +347,15 @@ public class AnalysisService {
 
         if (englishList.isEmpty()) return List.of();
 
-        // Call AI to regenerate with context about previous suggestion
-        var bundle = aiProvider.regenerateSuggestions(englishList, latest.getEnglishText(), previousSuggestion);
+        // Call AI to regenerate - use context-aware method if checklist provided
+        AiAnalysisBundle bundle;
+        if (checklistContext != null && !checklistContext.isBlank()) {
+            log.info("Regenerating suggestions with checklist context for customer: {}", customerName);
+            bundle = aiProvider.regenerateSuggestionsWithContext(
+                    englishList, latest.getEnglishText(), previousSuggestion, checklistContext, customerName);
+        } else {
+            bundle = aiProvider.regenerateSuggestions(englishList, latest.getEnglishText(), previousSuggestion);
+        }
 
         // Build suggestions
         return bundle.getSuggestions().stream()
@@ -291,5 +372,73 @@ public class AnalysisService {
                     return sr;
                 })
                 .toList();
+    }
+
+    // -------------------------------------------------------------------------------------
+    // FOLLOW-UP REQUIREMENT CHECK
+    // -------------------------------------------------------------------------------------
+
+    /**
+     * Analyze if follow-up is required for a conversation.
+     * Called at the end of an interaction.
+     *
+     * @param interactionId The interaction ID to analyze
+     * @return Follow-up analysis result
+     */
+    public FollowUpCheckResponse analyzeFollowUpRequirement(String interactionId) {
+        return analyzeFollowUpRequirement(interactionId, null);
+    }
+
+    /**
+     * Analyze if follow-up is required for a conversation with customer name.
+     *
+     * @param interactionId The interaction ID to analyze
+     * @param customerName  Optional customer name for personalized analysis
+     * @return Follow-up analysis result
+     */
+    public FollowUpCheckResponse analyzeFollowUpRequirement(String interactionId, String customerName) {
+        log.info("Analyzing follow-up requirement for interaction: {}", interactionId);
+
+        var messages = messageService.fetchByInteraction(interactionId);
+        if (messages.isEmpty()) {
+            log.warn("No messages found for interaction: {}", interactionId);
+            return FollowUpCheckResponse.builder()
+                    .followUpRequired(false)
+                    .followUp("")
+                    .conversationSummary("")
+                    .build();
+        }
+
+        // Build transcript in "Role: message" format
+        List<String> transcript = messages.stream()
+                .map(msg -> {
+                    String role = msg.getSender() == SenderType.customer ? "Customer" : "Agent";
+                    String text = msg.getEnglishText() != null ? msg.getEnglishText() : msg.getOriginalText();
+                    return role + ": " + text;
+                })
+                .filter(text -> text != null && !text.isBlank())
+                .toList();
+
+        return aiProvider.analyzeFollowUpRequirement(transcript, customerName);
+    }
+
+    /**
+     * Analyze if follow-up is required using a provided transcript.
+     * Use this when transcript is provided directly instead of fetching from DB.
+     *
+     * @param transcript   List of messages in "Role: message" format
+     * @param customerName Optional customer name
+     * @return Follow-up analysis result
+     */
+    public FollowUpCheckResponse analyzeFollowUpRequirementFromTranscript(List<String> transcript, String customerName) {
+        if (transcript == null || transcript.isEmpty()) {
+            return FollowUpCheckResponse.builder()
+                    .followUpRequired(false)
+                    .followUp("")
+                    .conversationSummary("")
+                    .build();
+        }
+
+        return aiProvider.analyzeFollowUpRequirement(transcript, customerName);
     }
 }

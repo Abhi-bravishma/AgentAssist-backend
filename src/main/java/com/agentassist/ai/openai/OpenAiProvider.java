@@ -9,11 +9,11 @@ import org.springframework.stereotype.Service;
 
 /**
  * OpenAI implementation of AiProvider.
- * Activated when ai.provider=openai (default).
+ * Activated when ai.provider=openai.
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "ai.provider", havingValue = "openai", matchIfMissing = true)
+@ConditionalOnProperty(name = "ai.provider", havingValue = "openai")
 public class OpenAiProvider extends BaseAiProvider {
 
     public OpenAiProvider(OpenAiChatModel chatModel, AiConfig config) {

@@ -9,11 +9,11 @@ import org.springframework.stereotype.Service;
 
 /**
  * Ollama implementation of AiProvider (uses Mistral 7B by default).
- * Activated when ai.provider=ollama.
+ * Activated when ai.provider=ollama (default).
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "ai.provider", havingValue = "ollama")
+@ConditionalOnProperty(name = "ai.provider", havingValue = "ollama", matchIfMissing = true)
 public class OllamaProvider extends BaseAiProvider {
 
     public OllamaProvider(OllamaChatModel chatModel, AiConfig config) {

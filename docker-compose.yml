@@ -1,0 +1,22 @@
+services:
+  agent-assist:
+    build: .
+    container_name: agent-assist
+    network_mode: host
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5433/agentassist
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: Bravishma2026
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      SERVER_PORT: "8085"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_PROVIDER: openai
+      RAG_BASE_URL: http://135.222.41.146:8080
+      RAG_ENABLED: "true"
+      RAG_API_KEY: agent-assist-secret-key-change-in-production
+      SALESFORCE_exiBASE_URL: https://salesforce.lab.bravishma.com
+      SALESFORCE_ENABLED: "true"
+    volumes:
+      - ./agent-assist-files:/app/agent-assist-files
+    restart: unless-stopped

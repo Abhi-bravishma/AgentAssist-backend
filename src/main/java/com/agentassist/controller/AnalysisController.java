@@ -1,7 +1,9 @@
 package com.agentassist.controller;
 
+import com.agentassist.dto.requestDTO.FollowUpCheckRequest;
 import com.agentassist.dto.requestDTO.RegenerateRequest;
 import com.agentassist.dto.responseDTO.*;
+import jakarta.validation.Valid;
 import com.agentassist.service.analysis.AnalysisService;
 import com.agentassist.service.conversation.MessageService;
 import lombok.RequiredArgsConstructor;
@@ -98,12 +100,54 @@ public class AnalysisController {
 
         var replies = analysisService.regenerateSuggestions(
                 request.getInteractionId(),
-                request.getMessage()
+                request.getMessage(),
+                request.getChecklistContext(),
+                request.getCustomerName()
         );
 
         SuggestionsResponse r = new SuggestionsResponse();
         r.setReplies(replies);
 
         return ResponseEntity.ok(r);
+    }
+
+    // FOLLOW-UP CHECK - Called at end of interaction
+    /**
+     * Analyze a completed conversation to determine if follow-up is required.
+     * Call this endpoint when an interaction ends to get AI-powered follow-up recommendations.
+     *
+     * @param request Contains interactionId and optional transcript/customerName
+     * @return Follow-up analysis with requirement, urgency, suggested actions, and reasoning
+     */
+    @PostMapping("/follow-up/check")
+    public ResponseEntity<FollowUpCheckResponse> checkFollowUpRequired(@Valid @RequestBody FollowUpCheckRequest request) {
+
+        FollowUpCheckResponse response;
+
+        // If transcript is provided, use it directly
+        if (request.getTranscript() != null && !request.getTranscript().isEmpty()) {
+            response = analysisService.analyzeFollowUpRequirementFromTranscript(
+                    request.getTranscript(),
+                    request.getCustomerName()
+            );
+        } else {
+            // Otherwise, fetch from DB using interactionId
+            response = analysisService.analyzeFollowUpRequirement(
+                    request.getInteractionId(),
+                    request.getCustomerName()
+            );
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    // GET version for simple lookup by interactionId
+    /**
+     * Quick follow-up check using just the interaction ID.
+     * Fetches conversation from database and analyzes.
+     */
+    @GetMapping("/{interactionId}/follow-up")
+    public ResponseEntity<FollowUpCheckResponse> checkFollowUpByInteraction(@PathVariable String interactionId) {
+        return ResponseEntity.ok(analysisService.analyzeFollowUpRequirement(interactionId));
     }
 }

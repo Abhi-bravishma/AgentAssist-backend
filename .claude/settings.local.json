@@ -62,7 +62,29 @@
       "Bash(git init:*)",
       "Bash(git remote add:*)",
       "Bash(git branch:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python -m json.tool:*)",
+      "WebFetch(domain:www.allianz.com.au)",
+      "WebSearch",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlckBleGFtcGxlLmNvbSIsImlhdCI6MTc3NDM2Mjk3OSwiZXhwIjoxNzc0NDQ5Mzc5fQ.7r-4x1u0S8RTyHxeivpO5mmsLMxRXcRTDZimuwsvvfw\")",
+      "Bash(__NEW_LINE_611bf783a5088e30__ echo \"=== TEST 1: How do I update my personal details? ===\")",
+      "Bash(__NEW_LINE_521bc1a13c4521b9__ curl -s -X POST http://localhost:8080/api/v1/agent-assistant/process -H \"Content-Type: application/json\" -H \"Authorization: Bearer $TOKEN\" -d \"{\"\"interactionId\"\": \"\"test-allianz-002\"\", \"\"from\"\": \"\"customer\"\", \"\"messageText\"\": \"\"How do I update my personal details?\"\", \"\"mobileNumber\"\": \"\"919028477947\"\", \"\"projectName\"\": \"\"ALLIANZ\"\"}\")",
+      "Bash(__NEW_LINE_555b303c8cbd2e46__ echo \"=== TEST 1: How do I update my personal details? \\(Process/FAQ question\\) ===\")",
+      "Bash(__NEW_LINE_d514a3a5b5ce85d0__ echo \"=== TEST 2: What is an insurance premium? \\(Definition question\\) ===\")",
+      "Bash(__NEW_LINE_0a6e1f6c72fd304c__ echo \"=== TEST 3: How do I make a claim? \\(Process question\\) ===\")",
+      "Bash(__NEW_LINE_72c0a13a5703489d__ echo \"=== TEST 4: How many policies do I have? \\(Customer-specific - should use Checklist\\) ===\")",
+      "Bash(__NEW_LINE_f184edc568cf6835__ echo \"=== TEST 5: How do I renew my policy? \\(Process question - should use RAG\\) ===\")",
+      "Bash(__NEW_LINE_e5cd4649190dfdf8__ echo \"=== TEST 6: What is my claim status? \\(Customer-specific - should use Checklist\\) ===\")",
+      "WebFetch(domain:www.sc.com)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlckBleGFtcGxlLmNvbSIsImlhdCI6MTc3NDUwNzQyNiwiZXhwIjoxNzc0NTkzODI2fQ.tmF_UUhY0CMMjC2_U2U1ULjlifZYMxH7Oc-bKh298As\")",
+      "Bash(__NEW_LINE_b4fd57373fde9791__ echo \"=== TEST 1: METRO Fee Waiver ===\")",
+      "Bash(__NEW_LINE_15f0405e07ed5e3a__ echo \"=== TEST 2: Regenerate API ===\")",
+      "Bash(python:*)",
+      "Bash(if exist target rmdir /S /Q target)",
+      "Bash(echo $AI_PROVIDER)",
+      "Bash(printenv:*)",
+      "Bash(cmd.exe /c \"echo %AI_PROVIDER%\")",
+      "Bash(AI_PROVIDER=ollama mvn spring-boot:run:*)"
     ]
   }
 }

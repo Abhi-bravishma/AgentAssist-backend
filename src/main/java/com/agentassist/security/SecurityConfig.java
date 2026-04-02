@@ -15,7 +15,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Collections;
+import org.springframework.http.HttpMethod;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -27,8 +30,13 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+            .cors(AbstractHttpConfigurer::disable)  // Disabled - nginx handles CORS
+            .authorizeHttpRequests(auth -> auth
+                // Allow all OPTIONS requests (CORS preflight)
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                // Allow all other requests
+                .anyRequest().permitAll()
+            )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
         return http.build();
@@ -39,12 +47,12 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // ALLOW EVERYTHING
-        config.addAllowedOriginPattern("*");  // All origins including null
-        config.addAllowedMethod("*");         // All methods
-        config.addAllowedHeader("*");         // All headers
-        config.addExposedHeader("*");         // Expose all headers
-        config.setAllowCredentials(true);     // Allow cookies/auth
-        config.setMaxAge(86400L);             // Cache preflight for 24 hours
+        config.setAllowedOriginPatterns(List.of("*"));  // All origins
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
+        config.setAllowedHeaders(List.of("*"));         // All headers
+        config.setExposedHeaders(List.of("*"));         // Expose all headers
+        config.setAllowCredentials(true);               // Allow credentials with pattern
+        config.setMaxAge(86400L);                       // Cache preflight for 24 hours
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

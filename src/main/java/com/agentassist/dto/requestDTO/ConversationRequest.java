@@ -5,8 +5,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+/**
+ * Request DTO for processing conversation messages.
+ * Used by the /api/v1/agent-assistant/process endpoint.
+ */
 @Data
-public class OneShotRequest {
+public class ConversationRequest {
 
     @NotBlank(message = "interactionId is required")
     private String interactionId;
@@ -18,4 +22,17 @@ public class OneShotRequest {
     @NotBlank(message = "message is required")
     @Size(max = 10000, message = "message must not exceed 10000 characters")
     private String message;
+
+    /**
+     * Customer's mobile number for Salesforce policy lookup.
+     * Optional - if provided, policy/claims data will be fetched on first message.
+     */
+    private String mobileNumber;
+
+    /**
+     * Project/Bank name for filtering knowledge base documents.
+     * Examples: "ALLIANZ", "METRO", "HSBC"
+     * Optional - if empty/null, searches all projects.
+     */
+    private String projectName;
 }
