@@ -187,7 +187,7 @@ public class RagClient {
      * @param category Optional category for document classification
      * @return Upload response with status
      */
-    public RagDocumentUploadResponse uploadDocuments(List<MultipartFile> files, String category) {
+    public RagDocumentUploadResponse uploadDocuments(List<MultipartFile> files, String category, String projectName) {
         if (!ragClientConfig.isEnabled()) {
             log.debug("RAG integration is disabled");
             return RagDocumentUploadResponse.builder()
@@ -198,7 +198,8 @@ public class RagClient {
                     .build();
         }
 
-        log.info("Uploading {} documents to RAG for companyId: {}", files.size(), ragClientConfig.getCompanyId());
+        log.info("Uploading {} documents to RAG for companyId: {}, projectName: {}",
+                files.size(), ragClientConfig.getCompanyId(), projectName);
 
         try {
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
@@ -216,6 +217,9 @@ public class RagClient {
             String uri = DOCUMENTS_ENDPOINT + "/upload?companyId=" + ragClientConfig.getCompanyId();
             if (category != null && !category.isEmpty()) {
                 uri += "&category=" + category;
+            }
+            if (projectName != null && !projectName.isEmpty()) {
+                uri += "&projectName=" + projectName;
             }
 
             RagDocumentUploadResponse response = ragWebClient.post()

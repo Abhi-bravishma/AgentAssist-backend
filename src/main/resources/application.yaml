@@ -45,7 +45,7 @@ spring:
 
 # AI provider selection
 ai:
-  provider: ${AI_PROVIDER:ollama}
+  provider: ${AI_PROVIDER:openai}
   openai:
     model: ${OPENAI_MODEL:gpt-4o-mini}
     temperature: 0.2

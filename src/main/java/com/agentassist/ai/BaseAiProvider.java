@@ -145,10 +145,15 @@ public abstract class BaseAiProvider implements AiProvider {
                  "I would suggest..."
                  "It may be beneficial..."
 
-                SCORING RULES:
-                - Score > 0.3 = positive, Score < -0.3 = negative
-                - "thank you" = positive (0.7 to 1.0)
-                - "bye/goodbye" = neutral (0.0)
+                ============================================================
+                SENTIMENT SCORING RULES:
+                ============================================================
+                - Score range: -1 to +1
+                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
+                - MULTIPLE MESSAGES:
+                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
+                  * overall_sentiment_score = average of ALL message sentiments
                 """.formatted(latestUserMsg, messages.size(), sb.toString());
 
             String content = call(prompt);
@@ -255,10 +260,15 @@ public abstract class BaseAiProvider implements AiProvider {
                  "I would suggest..."
                  "Based on the information..."
 
-                SCORING RULES:
-                - "thank you" = positive (0.7 to 1.0)
-                - "bye/goodbye" = neutral (0.0)
-                - Score > 0.3 = positive, Score < -0.3 = negative
+                ============================================================
+                SENTIMENT SCORING RULES:
+                ============================================================
+                - Score range: -1 to +1
+                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
+                - MULTIPLE MESSAGES:
+                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
+                  * overall_sentiment_score = average of ALL message sentiments
                 """.formatted(latestUserMsg, contextSection, messages.size(), sb.toString());
 
             String content = call(prompt);
@@ -465,6 +475,16 @@ public abstract class BaseAiProvider implements AiProvider {
                 - Include specific details (card numbers, amounts, eligibility)
                 - NO sentiment/emotion words
 
+                ============================================================
+                SENTIMENT SCORING RULES:
+                ============================================================
+                - Score range: -1 to +1
+                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
+                - MULTIPLE MESSAGES:
+                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
+                  * overall_sentiment_score = average of ALL message sentiments
+
                 Conversation:
                 %s
 
@@ -570,6 +590,16 @@ public abstract class BaseAiProvider implements AiProvider {
                 - Include specific details (card numbers, amounts)
                 - DO NOT start with "Hi"
                 - NO sentiment/emotion words
+
+                ============================================================
+                SENTIMENT SCORING RULES:
+                ============================================================
+                - Score range: -1 to +1
+                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
+                - MULTIPLE MESSAGES:
+                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
+                  * overall_sentiment_score = average of ALL message sentiments
 
                 Conversation:
                 %s
@@ -773,10 +803,15 @@ public abstract class BaseAiProvider implements AiProvider {
                  "Mr./Mrs. [Name]" (use first name only)
                  Responding to old topics when customer said "thank you"
 
-                SCORING:
-                - "thank you" = positive (0.7 to 1.0)
-                - "bye" = neutral (0.0)
-                - complaint = negative (-0.5 to -1.0)
+                ============================================================
+                SENTIMENT SCORING RULES:
+                ============================================================
+                - Score range: -1 to +1
+                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
+                - MULTIPLE MESSAGES:
+                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
+                  * overall_sentiment_score = average of ALL message sentiments
                 """.formatted(latestUserMsg, checklistContext, messages.size(), sb.toString());
 
             String content = call(prompt);

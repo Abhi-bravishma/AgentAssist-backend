@@ -38,15 +38,17 @@ public class KnowledgeBaseController {
     @Operation(
             summary = "Upload documents",
             description = "Upload documents to be used for generating AI-powered suggestions. " +
-                    "Supported formats: PDF, DOCX, DOC, TXT, MD, XLSX, XLS, CSV, PPTX, PPT"
+                    "Supported formats: PDF, DOCX, DOC, TXT, MD, XLSX, XLS, CSV, PPTX, PPT. " +
+                    "Optionally specify projectName (e.g., 'METRO', 'ALLIANZ', 'SCB') for project-based filtering."
     )
     @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadDocuments(
             @RequestPart("files") List<MultipartFile> files,
-            @RequestParam(required = false) String category) {
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String projectName) {
 
-        log.info("POST /api/v1/knowledge-base/documents/upload - Uploading {} files",
-                files != null ? files.size() : 0);
+        log.info("POST /api/v1/knowledge-base/documents/upload - Uploading {} files, category: {}, projectName: {}",
+                files != null ? files.size() : 0, category, projectName);
 
         if (files == null || files.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -59,7 +61,7 @@ public class KnowledgeBaseController {
         }
 
         try {
-            RagDocumentUploadResponse response = ragClient.uploadDocuments(files, category);
+            RagDocumentUploadResponse response = ragClient.uploadDocuments(files, category, projectName);
 
             if (response.getFailedFiles() > 0) {
                 return ResponseEntity.ok(response); // Partial success
