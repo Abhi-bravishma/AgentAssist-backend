@@ -81,6 +81,13 @@ salesforce:
   timeout: ${SALESFORCE_TIMEOUT:30000}
   enabled: ${SALESFORCE_ENABLED:true}
 
+# Avaya Infinity Integration (Transcripts)
+avaya:
+  base-url: ${AVAYA_BASE_URL:https://core.showmeavayacom.ec.avayacloud.com}
+  client-id: ${AVAYA_CLIENT_ID:}
+  client-secret: ${AVAYA_CLIENT_SECRET:}
+  timeout: ${AVAYA_TIMEOUT:30000}
+
 # Logging
 logging:
   level:

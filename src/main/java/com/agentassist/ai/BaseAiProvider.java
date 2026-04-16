@@ -2,6 +2,7 @@ package com.agentassist.ai;
 
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
+import com.agentassist.dto.responseDTO.ComplianceResponse;
 import com.agentassist.dto.responseDTO.FollowUpCheckResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.model.ChatResponse;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -1127,6 +1129,139 @@ public abstract class BaseAiProvider implements AiProvider {
             bundle.setOverall_sentiment_score(bundle.getCurrent_sentiment_score());
             log.info("[AI:{}] Inferred overall_sentiment_score {} from current score",
                     providerName, bundle.getOverall_sentiment_score());
+        }
+    }
+
+    @Override
+    public ComplianceResponse analyzeCompliance(List<String> agentMessages, String interactionId) {
+        log.info("[AI:{}] analyzeCompliance called, {} agent messages, interaction: {}",
+                providerName, agentMessages.size(), interactionId);
+        long startTime = System.currentTimeMillis();
+
+        // Default response with all false
+        ComplianceResponse fallback = ComplianceResponse.builder()
+                .interactionId(interactionId)
+                .greeting(false)
+                .empathy(false)
+                .clarity(false)
+                .productTnC(false)
+                .valediction(false)
+                .checkedAt(Instant.now())
+                .build();
+
+        if (agentMessages == null || agentMessages.isEmpty()) {
+            log.warn("[AI:{}] No agent messages to analyze for compliance", providerName);
+            return fallback;
+        }
+
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < agentMessages.size(); i++) {
+                sb.append(i + 1).append(") ").append(agentMessages.get(i)).append("\n");
+            }
+
+            String prompt = """
+                You are a compliance analyst for customer service conversations.
+                Analyze the following AGENT messages and determine if each compliance metric is met.
+                Return ONLY valid JSON with true/false for each metric.
+
+                ============================================================
+                AGENT MESSAGES TO ANALYZE:
+                ============================================================
+                %s
+
+                ============================================================
+                OUTPUT FORMAT (Return ONLY this JSON):
+                ============================================================
+                {
+                  "greeting": true/false,
+                  "empathy": true/false,
+                  "clarity": true/false,
+                  "productTnC": true/false,
+                  "valediction": true/false
+                }
+
+                ============================================================
+                COMPLIANCE METRICS DEFINITIONS:
+                ============================================================
+
+                GREETING (true if agent properly greeted the customer):
+                - Said "Hello", "Hi", "Good morning/afternoon/evening"
+                - Welcomed the customer
+                - Introduced themselves or the company
+                - Examples: "Hello, how can I help you?", "Hi there, thank you for contacting us"
+
+                EMPATHY (true if agent showed empathy or understanding):
+                - Acknowledged customer's feelings or situation
+                - Used phrases like "I understand", "I'm sorry to hear", "I appreciate your patience"
+                - Showed concern for customer's issue
+                - Validated customer's frustration or concern
+                - Examples: "I understand how frustrating this must be", "I'm sorry for the inconvenience"
+
+                CLARITY (true if agent communicated clearly):
+                - Provided clear and understandable explanations
+                - Avoided jargon or explained technical terms
+                - Gave step-by-step instructions when needed
+                - Confirmed understanding with customer
+                - Messages are well-structured and easy to follow
+
+                PRODUCT T&C (true if agent mentioned terms and conditions):
+                - Referenced terms and conditions
+                - Mentioned policies, rules, or guidelines
+                - Explained product limitations or requirements
+                - Discussed eligibility criteria
+                - Mentioned fees, charges, or penalties
+                - Examples: "According to our policy", "The terms state that", "Please note the conditions"
+
+                VALEDICTION (true if agent properly closed the conversation):
+                - Said goodbye or closing statement
+                - Thanked the customer
+                - Offered further assistance
+                - Used closing phrases like "Have a great day", "Thank you for contacting us"
+                - Asked if there's anything else they can help with
+                - Examples: "Is there anything else I can help you with?", "Thank you, have a great day!"
+
+                ============================================================
+                IMPORTANT RULES:
+                ============================================================
+                - Only analyze AGENT messages, not customer messages
+                - Return true ONLY if the metric is clearly met
+                - Return false if uncertain or metric is not present
+                - Be strict in evaluation - compliance must be clearly demonstrated
+                """.formatted(sb.toString());
+
+            String content = call(prompt);
+            if (content == null || content.isBlank()) {
+                log.warn("[AI:{}] analyzeCompliance returned empty response, using fallback", providerName);
+                return fallback;
+            }
+
+            content = cleanJson(content);
+            log.debug("[AI:{}] Compliance check JSON: {}", providerName, content);
+
+            JsonNode json = mapper.readTree(content);
+
+            ComplianceResponse response = ComplianceResponse.builder()
+                    .interactionId(interactionId)
+                    .greeting(json.path("greeting").asBoolean(false))
+                    .empathy(json.path("empathy").asBoolean(false))
+                    .clarity(json.path("clarity").asBoolean(false))
+                    .productTnC(json.path("productTnC").asBoolean(false))
+                    .valediction(json.path("valediction").asBoolean(false))
+                    .checkedAt(Instant.now())
+                    .build();
+
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("[AI:{}] analyzeCompliance completed in {}ms - greeting:{}, empathy:{}, clarity:{}, productTnC:{}, valediction:{}",
+                    providerName, duration,
+                    response.getGreeting(), response.getEmpathy(), response.getClarity(),
+                    response.getProductTnC(), response.getValediction());
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("[AI:{}] analyzeCompliance failed: {} - {}", providerName, e.getClass().getSimpleName(), e.getMessage());
+            return fallback;
         }
     }
 }

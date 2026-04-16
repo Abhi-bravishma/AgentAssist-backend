@@ -2,6 +2,7 @@ package com.agentassist.ai;
 
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
+import com.agentassist.dto.responseDTO.ComplianceResponse;
 import com.agentassist.dto.responseDTO.FollowUpCheckResponse;
 
 import java.util.List;
@@ -119,4 +120,14 @@ public interface AiProvider {
      * @return Operation type: "FEE_WAIVER", "HOME_LOAN_CLOSURE", or "GENERAL"
      */
     String detectOperationType(List<String> messages, String latestMessage);
+
+    /**
+     * Analyze agent messages for compliance.
+     * Checks for: Greeting, Empathy, Clarity, Product T&C, Valediction.
+     *
+     * @param agentMessages List of agent message texts to analyze
+     * @param interactionId Interaction ID for context
+     * @return Compliance check results with true/false for each metric
+     */
+    ComplianceResponse analyzeCompliance(List<String> agentMessages, String interactionId);
 }
