@@ -26,7 +26,7 @@ spring:
     database-platform: ${SPRING_JPA_DATABASE_PLATFORM:org.hibernate.dialect.MySQLDialect}
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:your-api-key-here}
+      api-key: 
       chat:
         options:
           model: ${OPENAI_MODEL:gpt-4o-mini}
@@ -45,7 +45,7 @@ spring:
 
 # AI provider selection
 ai:
-  provider: ${AI_PROVIDER:openai}
+  provider: ${AI_PROVIDER:ollama}
   openai:
     model: ${OPENAI_MODEL:gpt-4o-mini}
     temperature: 0.2
