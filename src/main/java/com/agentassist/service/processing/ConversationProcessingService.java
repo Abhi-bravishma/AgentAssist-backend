@@ -209,54 +209,36 @@ public class ConversationProcessingService {
             knowledgeSources = Collections.emptyList();
         } else if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
             // CUSTOMER-SPECIFIC QUERY (POLICY/CLAIMS/FEE_WAIVER/HOME_LOAN_CLOSURE with Salesforce data)
-            // Use checklist for customer-specific answers, but also check RAG for supplementary info
-            log.info("[Process] Customer-specific query for: {}, checking RAG first...",
+            // ALWAYS use checklist suggestions (GPT's answer with Salesforce data)
+            // RAG is only used for supplementary knowledge sources, NOT for suggestions
+            log.info("[Process] Customer-specific query for: {}, using CHECKLIST suggestions (Salesforce data)",
                     checklistContext.operationType());
 
             boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
             boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
 
-            // First, try RAG to see if there are relevant documents
+            // ALWAYS use checklist suggestions - GPT has the correct answer with customer data
+            suggestions = bundle.getSuggestions().stream()
+                    .map(s -> {
+                        SuggestedResponse sr = new SuggestedResponse();
+                        sr.setEnglishReply(s);
+                        if (!isEnglishUser) {
+                            sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                        }
+                        return sr;
+                    }).toList();
+
+            // Fetch RAG documents as SUPPLEMENTARY knowledge sources only (not for suggestions)
             if (analysisService.isRagEnabled() && !isSimpleMessage) {
                 var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
                 documentsFound = ragResult.documentsFound();
                 knowledgeSources = ragResult.knowledgeSources();
                 usedKnowledgeBase = ragResult.usedKnowledgeBase();
-
-                if (documentsFound > 0) {
-                    // RAG found relevant documents - use RAG suggestions
-                    log.info("[Process] RAG found {} documents, using RAG suggestions", documentsFound);
-                    suggestions = ragResult.suggestions();
-                } else {
-                    // No RAG documents - use checklist suggestions (Salesforce data)
-                    log.info("[Process] No RAG documents, using CHECKLIST suggestions for: {}",
-                            checklistContext.operationType());
-                    suggestions = bundle.getSuggestions().stream()
-                            .map(s -> {
-                                SuggestedResponse sr = new SuggestedResponse();
-                                sr.setEnglishReply(s);
-                                if (!isEnglishUser) {
-                                    sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                                }
-                                return sr;
-                            }).toList();
-                }
+                log.info("[Process] RAG found {} supplementary documents", documentsFound);
             } else {
-                // RAG disabled or simple message - use checklist directly
-                log.info("[Process] Using CHECKLIST suggestions (RAG disabled/simple) for: {}",
-                        checklistContext.operationType());
-                suggestions = bundle.getSuggestions().stream()
-                        .map(s -> {
-                            SuggestedResponse sr = new SuggestedResponse();
-                            sr.setEnglishReply(s);
-                            if (!isEnglishUser) {
-                                sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                            }
-                            return sr;
-                        }).toList();
                 knowledgeSources = Collections.emptyList();
             }
-            log.info("[Process] Generated {} suggestions", suggestions.size());
+            log.info("[Process] Generated {} suggestions from checklist", suggestions.size());
         } else {
             // GENERAL QUERY - Always use RAG for knowledge base lookup
             // Even if we have cached Salesforce data, RAG should be called for general questions

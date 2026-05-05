@@ -84,7 +84,13 @@
       "Bash(echo $AI_PROVIDER)",
       "Bash(printenv:*)",
       "Bash(cmd.exe /c \"echo %AI_PROVIDER%\")",
-      "Bash(AI_PROVIDER=ollama mvn spring-boot:run:*)"
+      "Bash(AI_PROVIDER=ollama mvn spring-boot:run:*)",
+      "Bash(for col in pdf_docs_new_mxbai-embed-large general_knowledge_large glownay_knowledge hotel_knowledge_base)",
+      "Bash(do echo -n \"$col: \")",
+      "Bash(done)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git checkout:*)"
     ]
   }
 }

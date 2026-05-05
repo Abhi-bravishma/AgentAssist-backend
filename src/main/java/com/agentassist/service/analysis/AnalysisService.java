@@ -216,12 +216,13 @@ public class AnalysisService {
                 ? latest.getEnglishText()
                 : latest.getOriginalText();
 
-        // Call RAG API with policy context and project name if available
-        log.info("Fetching suggestions from RAG for latest message: {}, hasPolicy: {}, projectName: {}",
+        // Call RAG API - only pass question, not conversation history or policy context
+        // This prevents RAG from being confused by customer data when answering FAQ questions
+        log.info("Fetching suggestions from RAG for latest message: {}, projectName: {}",
                 latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage,
-                policyContext != null,
                 projectName != null ? projectName : "ALL");
-        RagSuggestionResponse ragResponse = ragClient.getSuggestions(conversationHistory, latestMessage, 1, policyContext, projectName);
+        // Only pass latest message as single-item list, no policy context
+        RagSuggestionResponse ragResponse = ragClient.getSuggestions(List.of(latestMessage), latestMessage, 1, null, projectName);
 
         // Handle blocked response
         if (ragResponse.isBlocked()) {

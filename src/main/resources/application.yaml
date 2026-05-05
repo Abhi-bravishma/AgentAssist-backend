@@ -84,8 +84,8 @@ salesforce:
 # Avaya Infinity Integration (Transcripts)
 avaya:
   base-url: ${AVAYA_BASE_URL:https://core.showmeavayacom.ec.avayacloud.com}
-  client-id: ${AVAYA_CLIENT_ID:}
-  client-secret: ${AVAYA_CLIENT_SECRET:}
+  client-id: ${AVAYA_CLIENT_ID:transcript-api-01-001d010908da20232d07611320}
+  client-secret: ${AVAYA_CLIENT_SECRET:0L3V-SL0W-RWQKV3GAWSMG}
   timeout: ${AVAYA_TIMEOUT:30000}
 
 # Logging
