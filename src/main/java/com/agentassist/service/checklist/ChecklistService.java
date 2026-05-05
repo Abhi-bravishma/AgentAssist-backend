@@ -4,6 +4,7 @@ import com.agentassist.ai.AiProvider;
 import com.agentassist.dto.salesforce.CustomerCreditCardData;
 import com.agentassist.dto.salesforce.CustomerHomeLoanData;
 import com.agentassist.dto.salesforce.CustomerPolicyData;
+import com.agentassist.dto.salesforce.CustomerTelcoData;
 import com.agentassist.service.salesforce.SalesforceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class ChecklistService {
         HOME_LOAN_CLOSURE,
         POLICY,
         CLAIMS,
+        TELCO,
         NONE
     }
 
@@ -39,6 +41,8 @@ public class ChecklistService {
      * Project-specific operation mapping.
      * METRO (Banking): FEE_WAIVER, HOME_LOAN_CLOSURE
      * ALLIANZ (Insurance): POLICY, CLAIMS
+     * TELCO (Telecommunications): TELCO
+     * SCB (Banking): FEE_WAIVER
      * null/empty: All operations allowed
      */
     public boolean isOperationValidForProject(OperationType operation, String projectName) {
@@ -58,6 +62,8 @@ public class ChecklistService {
                     || operation == OperationType.NONE;
             case "SCB" -> operation == OperationType.FEE_WAIVER
                     || operation == OperationType.NONE;
+            case "TELCO" -> operation == OperationType.TELCO
+                    || operation == OperationType.NONE;
             default -> true; // Unknown project - allow all
         };
     }
@@ -72,13 +78,21 @@ public class ChecklistService {
             CustomerCreditCardData creditCardData,
             CustomerHomeLoanData homeLoanData,
             CustomerPolicyData policyData,
+            CustomerTelcoData telcoData,
             OperationType filteredIntent  // Intent that was detected but filtered out due to project mismatch
     ) {
-        // Backward compatible constructor
+        // Backward compatible constructor (without telcoData)
         public ChecklistContext(OperationType operationType, String checklistPrompt, String customerDataContext,
                                 CustomerCreditCardData creditCardData, CustomerHomeLoanData homeLoanData,
                                 CustomerPolicyData policyData) {
-            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null);
+            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, null);
+        }
+
+        // Backward compatible constructor (without telcoData, with filteredIntent)
+        public ChecklistContext(OperationType operationType, String checklistPrompt, String customerDataContext,
+                                CustomerCreditCardData creditCardData, CustomerHomeLoanData homeLoanData,
+                                CustomerPolicyData policyData, OperationType filteredIntent) {
+            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, filteredIntent);
         }
 
         public boolean hasContext() {
@@ -126,6 +140,7 @@ public class ChecklistService {
                 case "HOME_LOAN_CLOSURE" -> OperationType.HOME_LOAN_CLOSURE;
                 case "POLICY" -> OperationType.POLICY;
                 case "CLAIMS" -> OperationType.CLAIMS;
+                case "TELCO" -> OperationType.TELCO;
                 default -> OperationType.NONE;
             };
 
@@ -206,6 +221,7 @@ public class ChecklistService {
             case FEE_WAIVER -> buildFeeWaiverContext(mobileNumber, projectName);
             case HOME_LOAN_CLOSURE -> buildHomeLoanClosureContext(mobileNumber);
             case POLICY, CLAIMS -> buildPolicyContext(mobileNumber, operationType);
+            case TELCO -> buildTelcoContext(mobileNumber);
             default -> new ChecklistContext(OperationType.NONE, null, null, null, null, null);
         };
     }
@@ -300,6 +316,37 @@ public class ChecklistService {
     }
 
     /**
+     * Build context for telco inquiries (plan info, data usage, recommendations).
+     */
+    private ChecklistContext buildTelcoContext(String mobileNumber) {
+        log.info("[Checklist] Building TELCO context for mobile: ****{}",
+                mobileNumber.length() > 4 ? mobileNumber.substring(mobileNumber.length() - 4) : "****");
+
+        CustomerTelcoData telcoData = salesforceClient.getCustomerTelcoData(mobileNumber);
+
+        if (telcoData == null) {
+            log.warn("[Checklist] No telco data found for customer");
+            return new ChecklistContext(OperationType.TELCO, getChecklistPrompt(OperationType.TELCO), null, null, null, null, null, null);
+        }
+
+        String customerDataContext = telcoData.toAiContext();
+        log.info("[Checklist] TELCO context built - customer: {}, products: {}",
+                telcoData.getCustomerName(),
+                telcoData.getCustomerProducts() != null ? telcoData.getCustomerProducts().size() : 0);
+
+        return new ChecklistContext(
+                OperationType.TELCO,
+                getChecklistPrompt(OperationType.TELCO),
+                customerDataContext,
+                null,
+                null,
+                null,
+                telcoData,
+                null
+        );
+    }
+
+    /**
      * Get the checklist prompt for the given operation type.
      */
     public String getChecklistPrompt(OperationType operationType) {
@@ -326,6 +373,7 @@ public class ChecklistService {
             case HOME_LOAN_CLOSURE -> HOME_LOAN_CLOSURE_CHECKLIST;
             case POLICY -> POLICY_CHECKLIST;
             case CLAIMS -> CLAIMS_CHECKLIST;
+            case TELCO -> TELCO_CHECKLIST;
             case NONE -> "";
         };
     }
@@ -548,6 +596,191 @@ public class ChecklistService {
             6. For REJECTED claims - offer to explain or escalate
             7. Ask if they want to file a NEW claim
             """;
+
+    // =====================================================
+    // TELCO (XL/AXIS) CHECKLIST
+    // =====================================================
+
+    private static final String TELCO_CHECKLIST = """
+============================================================
+📱 TELCO CUSTOMER ASSISTANT (XL/AXIS PREPAID)
+============================================================
+
+You are helping a support agent respond to a telco customer.
+Use ONLY the customer data provided below - never make up data.
+
+⚠️ CRITICAL RULES:
+- Use customer's name from the data (never hardcode names)
+- Use actual plan/product data from customer records
+- All prices are in Indonesian Rupiah (Rp)
+- Be helpful, clear, and conversational
+
+============================================================
+🎯 INTENT CATEGORIES
+============================================================
+
+Detect what the customer is asking about:
+
+1. CURRENT PLAN/STATUS
+   (keywords: my plan, current plan, what plan, show plan, check plan)
+   → Show their current plan details from data
+
+2. DATA USAGE
+   (keywords: data usage, how much data, remaining data, quota, habis kuota)
+   → Show daily/remaining data from customer data
+
+3. PLAN UPGRADE/RECOMMENDATION
+   (keywords: more data, upgrade, better plan, recommend, suggest plan, need more)
+   → Recommend plans based on their usage pattern
+
+4. ROAMING
+   (keywords: roaming, travel, singapore, malaysia, thailand, going abroad)
+   → Suggest roaming passes from available plans
+
+5. ADD-ON/TOP-UP
+   (keywords: add-on, extra data, top up, pulsa, ran out, habis)
+   → Suggest relevant add-ons or top-ups
+
+6. SPECIFIC PLAN INQUIRY
+   (keywords: tell me about, what is, explain, details of)
+   → Provide details of the specific plan asked
+
+7. PRICE/BUDGET
+   (keywords: cheap, affordable, budget, under, murah)
+   → Filter and suggest plans within budget
+
+8. PROMO/OFFERS
+   (keywords: promo, offer, discount, special, lebaran)
+   → Highlight active promotions from available plans
+
+============================================================
+📊 RESPONSE FORMAT BY INTENT
+============================================================
+
+FOR CURRENT PLAN/STATUS:
+------------------------
+"Hi [Customer Name],
+
+Here's your current plan status:
+- Plan: [Plan Name from data]
+- Type: [Prepaid/Postpaid]
+- Validity: [Date from data]
+- Network Status: [Status from data]
+
+Data Usage Today:
+- Used: [X] GB of [Y] GB daily limit
+- Remaining: [Z] GB
+
+Is there anything specific you'd like help with?"
+
+FOR DATA USAGE:
+---------------
+"Hi [Customer Name],
+
+Your data usage today:
+- Daily Limit: [X] GB
+- Used: [Y] GB
+- Remaining: [Z] GB ([%] used)
+
+Your active products:
+[List active products with remaining data]
+
+Would you like to add more data or upgrade your plan?"
+
+FOR PLAN RECOMMENDATION:
+------------------------
+Based on customer's current usage and segment, recommend appropriate plans:
+
+"Hi [Customer Name],
+
+Based on your usage pattern ([Segment from data]), here are my recommendations:
+
+1. [Plan Name] — Rp [Price] / [Validity] days
+   • [Data Benefit]
+   • [Voice Benefit]
+   • [OTT Benefits if any]
+   ✓ Best for: [Recommended For]
+
+2. [Another Plan] — Rp [Price] / [Validity] days
+   ...
+
+Your current plan expires on [Date]. Would you like to upgrade?"
+
+FOR ROAMING:
+------------
+When customer mentions travel destination:
+
+"Hi [Customer Name],
+
+For your trip to [Country], I recommend:
+
+[Roaming Pass Name] — Rp [Price] / [Validity] days
+• Data: [Data Benefit]
+• Voice: [Voice Benefit]
+• SMS: [SMS Benefit]
+• Covers: [Countries]
+
+Would you like me to help you activate this?"
+
+FOR ADD-ONS:
+------------
+"Hi [Customer Name],
+
+Here are add-on options for extra data:
+
+1. [Add-on Name] — Rp [Price] / [Validity] days
+   • [Data Benefit]
+
+2. [Another Add-on] — Rp [Price] / [Validity] days
+   • [Data Benefit]
+
+These work on top of your current [Current Plan Name] plan."
+
+============================================================
+🎁 HIGHLIGHT PROMOS
+============================================================
+
+If there are active offers/promos in available plans, mention them:
+- Look for Type = "Offer" in available plans
+- Highlight savings or special benefits
+- Example: "🎉 Special Lebaran Promo available! Save Rp 16,000..."
+
+============================================================
+💡 RECOMMENDATION LOGIC
+============================================================
+
+Based on customer segment (from data), prioritize:
+
+- "High Data Users" → Plans with highest data quota
+- "Heavy Callers" → Plans with unlimited voice
+- "Travelers" → Roaming passes
+- "New Users" → Budget-friendly starter plans
+- "Medium Data" → Balanced plans with good value
+
+Based on current usage:
+- If data usage > 80% daily → suggest upgrade or add-on
+- If roaming active → suggest roaming passes
+- If near validity expiry → remind to recharge
+
+============================================================
+⚠️ IMPORTANT NOTES
+============================================================
+
+- NEVER hardcode customer names or numbers
+- ALWAYS use data from "CUSTOMER TELCO DATA" section below
+- Prices in Rp (Indonesian Rupiah)
+- Be conversational and helpful
+- If customer data shows no current plan → suggest starter plans
+- If no products found → offer to help them find the right plan
+
+============================================================
+📥 CUSTOMER DATA PROVIDED BELOW
+============================================================
+
+Use ONLY the data below to generate personalized responses.
+
+============================================================
+""";
 
     // =====================================================
     // STANDARD CHARTERED (SCB) CHECKLISTS

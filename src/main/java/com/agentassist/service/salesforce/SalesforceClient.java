@@ -19,6 +19,9 @@ public class SalesforceClient {
     private static final String CLAIMS_ENDPOINT = "/api/v4/claims";
     private static final String CREDIT_CARDS_ENDPOINT = "/api/v4/credit-cards";
     private static final String HOME_LOANS_ENDPOINT = "/api/v4/home-loans";
+    private static final String TELCO_CONTACTS_ENDPOINT = "/api/v4/telco-contacts";
+    private static final String TELCO_CUSTOMER_PRODUCTS_ENDPOINT = "/api/v4/telco-customer-products";
+    private static final String TELCO_PLANS_ENDPOINT = "/api/v4/telco-plans";
 
     private final WebClient salesforceWebClient;
     private final SalesforceConfig salesforceConfig;
@@ -188,6 +191,251 @@ public class SalesforceClient {
             log.error("Failed to call Salesforce home loans API: {}", e.getMessage(), e);
             return null;
         }
+    }
+
+    // =====================================================
+    // TELCO API METHODS
+    // =====================================================
+
+    /**
+     * Fetch telco contact data from Salesforce.
+     *
+     * @param mobileNumber Customer's mobile number
+     * @return TelcoContactResponse with contact and plan info, or null if not found
+     */
+    public TelcoContactResponse getTelcoContact(String mobileNumber) {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            log.debug("Mobile number is empty, skipping Telco contact lookup");
+            return null;
+        }
+
+        log.info("Fetching telco contact data for mobile: {}", maskMobileNumber(mobileNumber));
+
+        try {
+            TelcoContactResponse response = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(TELCO_CONTACTS_ENDPOINT)
+                            .queryParam("mobileNumber", mobileNumber)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(TelcoContactResponse.class)
+                    .block();
+
+            if (response != null && response.isSuccess()) {
+                log.info("Telco contact data retrieved for: {}",
+                        response.getContact() != null ? response.getContact().getName() : "Unknown");
+                return response;
+            }
+
+            log.warn("Telco contacts API returned unsuccessful response or null");
+            return null;
+
+        } catch (WebClientResponseException e) {
+            log.error("Telco contacts API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to call Telco contacts API: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch telco customer products from Salesforce.
+     *
+     * @param mobileNumber Customer's mobile number
+     * @return TelcoCustomerProductResponse with products, or null if not found
+     */
+    public TelcoCustomerProductResponse getTelcoCustomerProducts(String mobileNumber) {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            log.debug("Mobile number is empty, skipping Telco products lookup");
+            return null;
+        }
+
+        log.info("Fetching telco customer products for mobile: {}", maskMobileNumber(mobileNumber));
+
+        try {
+            TelcoCustomerProductResponse response = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(TELCO_CUSTOMER_PRODUCTS_ENDPOINT)
+                            .queryParam("mobileNumber", mobileNumber)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(TelcoCustomerProductResponse.class)
+                    .block();
+
+            if (response != null && response.isSuccess()) {
+                log.info("Telco products retrieved: {} products",
+                        response.getData() != null ? response.getData().size() : 0);
+                return response;
+            }
+
+            log.warn("Telco customer products API returned unsuccessful response or null");
+            return null;
+
+        } catch (WebClientResponseException e) {
+            log.error("Telco customer products API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to call Telco customer products API: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch all available telco plans from Salesforce.
+     *
+     * @return TelcoPlanResponse with all plans, or null if error
+     */
+    public TelcoPlanResponse getTelcoPlans() {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+
+        log.info("Fetching all available telco plans");
+
+        try {
+            TelcoPlanResponse response = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(TELCO_PLANS_ENDPOINT)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(TelcoPlanResponse.class)
+                    .block();
+
+            if (response != null && response.isSuccess()) {
+                log.info("Telco plans retrieved: {} plans",
+                        response.getData() != null ? response.getData().size() : 0);
+                return response;
+            }
+
+            log.warn("Telco plans API returned unsuccessful response or null");
+            return null;
+
+        } catch (WebClientResponseException e) {
+            log.error("Telco plans API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to call Telco plans API: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch a specific telco plan by ID.
+     *
+     * @param planId Plan ID
+     * @return TelcoPlan or null if not found
+     */
+    public TelcoPlan getTelcoPlanById(String planId) {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+
+        if (planId == null || planId.isBlank()) {
+            log.debug("Plan ID is empty, skipping lookup");
+            return null;
+        }
+
+        log.info("Fetching telco plan by ID: {}", planId);
+
+        try {
+            // The API returns the plan wrapped in a response object
+            TelcoPlanResponse response = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(TELCO_PLANS_ENDPOINT + "/" + planId)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(TelcoPlanResponse.class)
+                    .block();
+
+            if (response != null && response.isSuccess() && response.getData() != null && !response.getData().isEmpty()) {
+                log.info("Telco plan retrieved: {}", response.getData().get(0).getName());
+                return response.getData().get(0);
+            }
+
+            // Try single plan response format
+            TelcoPlan singlePlan = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(TELCO_PLANS_ENDPOINT + "/" + planId)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(TelcoPlan.class)
+                    .block();
+
+            if (singlePlan != null && singlePlan.getId() != null) {
+                log.info("Telco plan retrieved (single format): {}", singlePlan.getName());
+                return singlePlan;
+            }
+
+            log.warn("Telco plan not found for ID: {}", planId);
+            return null;
+
+        } catch (WebClientResponseException e) {
+            log.error("Telco plan API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to call Telco plan API: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch combined telco data for a customer.
+     * Calls all telco APIs and combines the results.
+     *
+     * @param mobileNumber Customer's mobile number
+     * @return CustomerTelcoData with all telco information, or null if no data found
+     */
+    public CustomerTelcoData getCustomerTelcoData(String mobileNumber) {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            log.debug("Mobile number is empty, skipping Telco data lookup");
+            return null;
+        }
+
+        log.info("Fetching complete telco data for mobile: {}", maskMobileNumber(mobileNumber));
+
+        // Fetch all telco data
+        TelcoContactResponse contactResponse = getTelcoContact(mobileNumber);
+        TelcoCustomerProductResponse productResponse = getTelcoCustomerProducts(mobileNumber);
+        TelcoPlanResponse planResponse = getTelcoPlans();
+
+        // Fetch current plan details if available
+        TelcoPlan currentPlan = null;
+        if (contactResponse != null && contactResponse.getData() != null && !contactResponse.getData().isEmpty()) {
+            String currentPlanId = contactResponse.getData().get(0).getCurrentPlanId();
+            if (currentPlanId != null && !currentPlanId.isBlank()) {
+                currentPlan = getTelcoPlanById(currentPlanId);
+            }
+        }
+
+        // Check if we have any data
+        if (contactResponse == null && productResponse == null) {
+            log.warn("No telco data found for customer");
+            return null;
+        }
+
+        CustomerTelcoData telcoData = CustomerTelcoData.fromResponses(
+                contactResponse, productResponse, planResponse, currentPlan);
+
+        log.info("Complete telco data assembled for customer: {}", telcoData.getCustomerName());
+        return telcoData;
     }
 
     /**

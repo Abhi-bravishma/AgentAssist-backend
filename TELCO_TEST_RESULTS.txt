@@ -1,0 +1,177 @@
+================================================================================
+                    TELCO INTEGRATION TEST RESULTS
+                    Agent Assist - XL/AXIS Prepaid
+================================================================================
+
+Test Date: 2026-05-05
+Mobile Number: 919028477947
+Project: TELCO
+Customer: Vivek Nishad (Prepaid - Combo Xtra Pro 30 Hari)
+
+================================================================================
+TEST 1: DATA UPGRADE REQUEST
+================================================================================
+
+CUSTOMER QUESTION:
+"I need more data, my current plan is not enough"
+
+SUGGESTED RESPONSE:
+Hi, based on your current usage, here are some options to get more data:
+
+1. Paket TikTok 5 GB — Rp 25,000 / 14 days
+   • 5 GB khusus TikTok
+
+2. Paket YouTube 10 GB — Rp 35,000 / 30 days
+   • 10 GB khusus YouTube
+
+3. Xtra Kuota 2 GB Mingguan — Rp 18,000 / 7 days
+   • 2 GB tambahan untuk paket aktif
+
+These add-ons can work on top of your current plan. Would you like to add any of these?
+
+SUMMARY:
+Customer expressed a need for more data, stating their current plan is not sufficient. The system retrieved customer data showing they are on a Prepaid plan with a daily data limit of 1.50 GB, of which they have used 1.18 GB today, leaving 0.32 GB remaining.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST 2: CURRENT PLAN INQUIRY
+================================================================================
+
+CUSTOMER QUESTION:
+"What is my current plan?"
+
+SUGGESTED RESPONSE:
+Here's your current plan status:
+- Plan: Combo Xtra Pro 30 Hari
+- Type: Prepaid
+- Validity: 2026-05-30
+- Network Status: Normal
+
+Data Usage Today:
+- Used: 1.18 GB of 1.50 GB daily limit
+- Remaining: 0.32 GB
+
+Is there anything specific you'd like help with?
+
+SUMMARY:
+Customer asked about their current plan. The system retrieved customer data showing they are on a prepaid plan with a validity date until May 30, 2026. The customer has a daily data limit of 1.50 GB, with 1.18 GB used today, leaving 0.32 GB remaining.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST 3: ROAMING INQUIRY
+================================================================================
+
+CUSTOMER QUESTION:
+"I am traveling to Singapore tomorrow, do you have any roaming package?"
+
+SUGGESTED RESPONSE:
+Hi, for your trip to Singapore, I recommend the Pass Roaming Singapore 1 Hari — Rp 75,000 / 1 day. It covers Singapore and provides you with the necessary connectivity. Would you like me to help you activate this?
+
+SUMMARY:
+Customer inquired about roaming packages for their trip to Singapore tomorrow. The system retrieved information about available roaming passes. The customer has a prepaid plan with normal network status and a medium data segment.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST 4: BUDGET PLAN INQUIRY
+================================================================================
+
+CUSTOMER QUESTION:
+"What is the cheapest plan you have?"
+
+SUGGESTED RESPONSE:
+The cheapest plan we have is the Combo Xtra Lite for Rp 35,000, which offers 5 GB of data for 30 days. Additionally, there's a special offer for the Combo Xtra Plus at Rp 49,000, which provides 15 GB of data. Would you like more details on either of these plans?
+
+SUMMARY:
+Customer inquired about the cheapest plan available. The system retrieved data showing various plans and offers. The cheapest plan identified is the 'Combo Xtra Lite' at Rp 35,000 for 30 days. Additionally, there are special offers such as the 'Combo Xtra Plus Promo Lebaran' at Rp 49,000.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST 5: DATA USAGE INQUIRY
+================================================================================
+
+CUSTOMER QUESTION:
+"How much data have I used today?"
+
+SUGGESTED RESPONSE:
+Hi, your data usage today:
+- Daily Limit: 1.50 GB
+- Used: 1.18 GB
+- Remaining: 0.32 GB (79% used)
+
+Your active products include:
+- 8.50 GB remaining from your active plan
+- 3.20 GB from your add-on
+
+Would you like to add more data or upgrade your plan?
+
+SUMMARY:
+Customer asked how much data they have used today. The system retrieved data showing a daily limit of 1.50 GB, with 1.18 GB used and 0.32 GB remaining. The customer is currently on a prepaid plan with normal network status and has multiple active products.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+TEST 6: TIKTOK PLAN RECOMMENDATION
+================================================================================
+
+CUSTOMER QUESTION:
+"Recommend me a plan for heavy TikTok usage"
+
+SUGGESTED RESPONSE:
+Based on your heavy TikTok usage, I recommend the following plans and add-ons:
+
+1. **Combo Xtra Plus** — Rp 65,000 / 30 days
+   • Data: 15 GB Utama + 5 GB Kuota Malam
+   • Voice: Unlimited calls to XL/AXIS
+   • OTT: Bonus 2 GB TikTok
+   ✓ Best for: High Data Users
+
+2. **Paket TikTok** — Rp 25,000 / 14 days | 5 GB khusus TikTok
+
+Your current plan expires on 2026-05-30. Would you like to upgrade or add the TikTok package?
+
+SUMMARY:
+Customer requested a plan recommendation for heavy TikTok usage. The system identified the customer's current plan as a prepaid plan with a daily data limit of 1.50 GB and noted their medium data segment. Several plans and add-ons suitable for heavy TikTok users were available.
+
+--------------------------------------------------------------------------------
+
+================================================================================
+                           TEST SUMMARY
+================================================================================
+
+| #  | Test Case                  | Intent Detected | Status |
+|----|---------------------------|-----------------|--------|
+| 1  | Data Upgrade Request      | TELCO           | PASS   |
+| 2  | Current Plan Inquiry      | TELCO           | PASS   |
+| 3  | Roaming Inquiry           | TELCO           | PASS   |
+| 4  | Budget Plan Inquiry       | TELCO           | PASS   |
+| 5  | Data Usage Inquiry        | TELCO           | PASS   |
+| 6  | TikTok Plan Recommendation| TELCO           | PASS   |
+
+All tests passed successfully!
+
+================================================================================
+                         CUSTOMER DATA USED
+================================================================================
+
+Customer Name: Vivek Nishad
+Mobile: +919028477947
+Plan Type: Prepaid
+Current Plan: Combo Xtra Pro 30 Hari
+Validity: 2026-05-30
+Network Status: Normal
+Segment: Medium Data
+
+Daily Data:
+- Limit: 1.50 GB
+- Used: 1.18 GB
+- Remaining: 0.32 GB
+
+Active Products:
+- Plan with 8.50 GB remaining
+- Add-on with 3.20 GB remaining
+
+================================================================================

@@ -868,6 +868,7 @@ public abstract class BaseAiProvider implements AiProvider {
                 HOME_LOAN_CLOSURE
                 POLICY
                 CLAIMS
+                TELCO
                 GENERAL
 
                 STRICT CLASSIFICATION RULES:
@@ -909,6 +910,23 @@ public abstract class BaseAiProvider implements AiProvider {
                 - "Is my claim approved?" (checking their status)
                 - KEY: Asking for their PERSONAL CLAIM DATA
 
+                Return "TELCO" if customer mentions ANY of these (mobile/telecom related):
+                - Mobile plan / data plan / internet package
+                - "What is my current plan?" / "Show my plan"
+                - "How much data do I have?" / "Check my quota" / "Remaining data"
+                - "I need more data" / "Upgrade my plan" / "Better plan"
+                - "Recommend a plan" / "Suggest a plan" / "Which plan"
+                - "Roaming" / "Travel to Singapore/Malaysia/Thailand"
+                - "Add-on" / "Extra data" / "Top up" / "Pulsa"
+                - "Data usage" / "Habis kuota" / "Kuota malam"
+                - "TikTok plan" / "YouTube plan" / "WhatsApp unlimited"
+                - "Prepaid" / "Postpaid" / "Recharge"
+                - "Weekly plan" / "Monthly plan" / "7 days" / "30 days"
+                - "Promo" / "Lebaran offer" / "Weekend special"
+                - "Cheap plan" / "Budget plan" / "Murah"
+                - "Student plan" / "Mahasiswa"
+                - KEY: Anything related to mobile/telecom plans, data, or services
+
                 Return "GENERAL" for process/how-to/FAQ questions:
                 - "How do I renew my policy?" → GENERAL (process question)
                 - "How do I file a claim?" → GENERAL (process question)
@@ -928,10 +946,14 @@ public abstract class BaseAiProvider implements AiProvider {
                 | "What is my prepayment penalty?" | HOME_LOAN_CLOSURE |
                 | "How many policies do I have?" | POLICY |
                 | "What is my claim status?" | CLAIMS |
+                | "I need more data" | TELCO |
+                | "What is my current plan?" | TELCO |
+                | "Recommend a plan for me" | TELCO |
+                | "Roaming for Singapore" | TELCO |
                 | "How do I file a claim?" | GENERAL |
                 | "What is a premium?" | GENERAL |
 
-                RULE: If question asks about MY/YOUR personal data (cards, loans, policies, claims) → use appropriate category
+                RULE: If question asks about MY/YOUR personal data (cards, loans, policies, claims, mobile plans) → use appropriate category
                 RULE: If question asks HOW TO DO something or WHAT IS something → GENERAL
 
                 LATEST MESSAGE: "%s"
@@ -950,7 +972,8 @@ public abstract class BaseAiProvider implements AiProvider {
 
             // Validate it's one of the expected values
             if (!result.equals("FEE_WAIVER") && !result.equals("HOME_LOAN_CLOSURE")
-                    && !result.equals("POLICY") && !result.equals("CLAIMS") && !result.equals("GENERAL")) {
+                    && !result.equals("POLICY") && !result.equals("CLAIMS")
+                    && !result.equals("TELCO") && !result.equals("GENERAL")) {
                 log.warn("[AI:{}] detectOperationType returned invalid value '{}', defaulting to GENERAL", providerName, result);
                 return "GENERAL";
             }
