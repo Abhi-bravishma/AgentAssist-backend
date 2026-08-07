@@ -43,6 +43,11 @@ public abstract class BaseAiProvider implements AiProvider {
     }
 
     @Override
+    public String complete(String prompt) {
+        return call(prompt);
+    }
+
+    @Override
     public AiAnalysisResult analyzeText(String text) {
         log.info("[AI:{}] analyzeText called, text length: {}", providerName, text.length());
         long startTime = System.currentTimeMillis();

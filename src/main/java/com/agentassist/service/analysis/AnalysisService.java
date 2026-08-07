@@ -12,7 +12,7 @@ import com.agentassist.dto.responseDTO.SuggestedResponse;
 import com.agentassist.model.MessageEntity;
 import com.agentassist.model.SenderType;
 import com.agentassist.service.conversation.MessageService;
-import com.agentassist.service.rag.RagClient;
+import com.agentassist.rag.RagGateway;
 import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +30,7 @@ public class AnalysisService {
     private final AiProviderFactory aiProviderFactory;
     private final MessageService messageService;
     private final TranslationService translationService;
-    private final RagClient ragClient;
+    private final RagGateway ragClient;
 
     // -------------------------------------------------------------------------------------
     // CORE AI METHODS

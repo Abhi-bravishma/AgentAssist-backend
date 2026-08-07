@@ -44,6 +44,11 @@ spring:
         options:
           model: ${OPENAI_MODEL:gpt-4o-mini}
           temperature: 0.3
+      embedding:
+        options:
+          # Used by the internal RAG lane while no Ollama server exists.
+          # 1536-dim — pairs with the agent_assist_docs_openai collection.
+          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://135.222.41.146:11434}
       init:
@@ -55,6 +60,12 @@ spring:
           model: ${OLLAMA_MODEL:llama3:8b}
           temperature: 0.2
           num-predict: 2048
+      embedding:
+        options:
+          # For when rag.internal.embedding.provider=ollama (server not
+          # available yet). The legacy mxbai collection requires exactly this
+          # model — vectors from another embedder cannot be searched.
+          model: ${OLLAMA_EMBEDDING_MODEL:mxbai-embed-large}
 
 # AI provider selection
 ai:
@@ -76,13 +87,44 @@ jwt:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
 
-# RAG Integration
+# RAG Integration.
+# mode=internal (default): the agent-assist lane copied IN-APP from
+# bravishma-rag — Qdrant directly, suggestions via this app's own AI provider.
+# mode=remote: the legacy HTTP client below, kept only as a rollback path.
 rag:
+  mode: ${RAG_MODE:internal}
+  # --- legacy remote client (rag.mode=remote only) ---
   base-url: ${RAG_BASE_URL:http://135.222.41.146:8080}
   timeout: ${RAG_TIMEOUT:120000}  # 2 minutes for slow LLM responses
   enabled: ${RAG_ENABLED:true}
   api-key: ${RAG_API_KEY:agent-assist-secret-key-change-in-production}
-  company-id: ${RAG_COMPANY_ID:1}
+  company-id: ${RAG_COMPANY_ID:1}   # also used as the tenant id by the internal lane
+  # --- in-app lane (rag.mode=internal) ---
+  internal:
+    enabled: ${RAG_INTERNAL_ENABLED:true}
+    # No Ollama server available right now -> OpenAI embeddings into a NEW
+    # collection (auto-created; the legacy 1024-dim mxbai collection cannot be
+    # searched with 1536-dim OpenAI vectors, so KB documents need one re-upload
+    # via /admin). When the Ollama server is ready: set provider=ollama, point
+    # spring.ai.ollama.base-url at it, and switch the collection back to
+    # pdf_docs_new_mxbai-embed-large — the old documents return untouched.
+    embedding:
+      provider: ${RAG_EMBEDDING_PROVIDER:openai}
+    qdrant:
+      host: ${QDRANT_HOST:74.225.250.214}
+      port: ${QDRANT_PORT:6334}
+      collection: ${QDRANT_COLLECTION:agent_assist_docs_openai}
+      use-tls: false
+      initialize-schema: true
+    top-k: 3
+    vector-score: 0.3
+    min-relevance-score: 0.55
+    chunk:
+      size: 300
+      overlap: 50
+    file-storage:
+      path: ${AGENT_ASSIST_FILES_PATH:./agent-assist-files}
+      enabled: true
 
 # Salesforce Integration (Policy & Claims)
 salesforce:

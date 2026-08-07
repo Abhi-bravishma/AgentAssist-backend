@@ -14,6 +14,12 @@ import java.util.List;
 public interface AiProvider {
 
     /**
+     * Raw single-prompt completion for internal callers (the in-app RAG lane's
+     * suggestion generation). Returns null on failure — callers must handle it.
+     */
+    String complete(String prompt);
+
+    /**
      * Analyze a single text and return sentiment, summary, and suggestions.
      */
     AiAnalysisResult analyzeText(String text);

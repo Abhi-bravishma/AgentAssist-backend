@@ -36,6 +36,9 @@ public final class TemplateKeys {
 
     public static final String SYSTEM_NO_KNOWLEDGE_REPLY = "system.no_knowledge_reply";
 
+    /** In-app RAG suggestion prompt (verbatim from bravishma-rag's agent-assist lane). */
+    public static final String RAG_SUGGESTIONS = "rag.suggestions";
+
     /** Every key that must have a PUBLISHED default row for the app to function. */
     public static final List<String> ALL = List.of(
             AI_ANALYZE_TEXT,
@@ -57,5 +60,6 @@ public final class TemplateKeys {
             CHECKLIST_POLICY,
             CHECKLIST_CLAIMS,
             CHECKLIST_TELCO,
-            SYSTEM_NO_KNOWLEDGE_REPLY);
+            SYSTEM_NO_KNOWLEDGE_REPLY,
+            RAG_SUGGESTIONS);
 }

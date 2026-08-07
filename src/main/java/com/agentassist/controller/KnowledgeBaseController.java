@@ -2,7 +2,7 @@ package com.agentassist.controller;
 
 import com.agentassist.dto.rag.RagDocumentListResponse;
 import com.agentassist.dto.rag.RagDocumentUploadResponse;
-import com.agentassist.service.rag.RagClient;
+import com.agentassist.rag.RagGateway;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ import java.util.Map;
 @Tag(name = "Knowledge Base", description = "Manage documents for AI-powered agent suggestions")
 public class KnowledgeBaseController {
 
-    private final RagClient ragClient;
+    private final RagGateway ragClient;
 
     /**
      * Upload documents to the knowledge base.

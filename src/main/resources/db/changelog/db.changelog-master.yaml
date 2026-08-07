@@ -5,3 +5,6 @@ databaseChangeLog:
   - include:
       file: changes/part1-seed.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/part4-internal-rag.yaml
+      relativeToChangelogFile: true

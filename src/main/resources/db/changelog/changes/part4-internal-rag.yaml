@@ -1,0 +1,23 @@
+# Part 4 (pulled forward) — in-app RAG lane. The suggestion prompt is the
+# EXACT text of bravishma-rag's SUGGESTION_PROMPT_TEMPLATE, extracted
+# mechanically from its source (text-block indent/trailing-space semantics
+# applied, %s/%d converted to named placeholders). The literal {Customer Name}
+# and {credit cards count} inside the prompt prose are NOT placeholders — the
+# renderer only substitutes snake_case tokens.
+databaseChangeLog:
+
+  - changeSet:
+      id: part4-01-rag-suggestions-template
+      author: restructure-part4
+      changes:
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "rag.suggestions" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/rag.suggestions.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part4-seed" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_prompt_template WHERE template_key = 'rag.suggestions'
