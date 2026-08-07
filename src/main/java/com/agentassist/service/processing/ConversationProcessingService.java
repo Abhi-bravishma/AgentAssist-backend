@@ -34,14 +34,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ConversationProcessingService {
 
-    /**
-     * Shown when the knowledge base matched nothing and there is no customer data to
-     * answer from. Deliberately states the limit instead of letting the model guess.
-     */
-    private static final String NO_KNOWLEDGE_REPLY =
-            "I don't have that information in our knowledge base right now. "
-            + "Let me check with the team and come back to you shortly.";
-
     private final ConversationService conversationService;
     private final MessageService messageService;
     private final TranslationService translationService;
@@ -384,33 +376,6 @@ public class ConversationProcessingService {
                     }
                     return sr;
                 }).toList();
-    }
-
-    /**
-     * Get a helpful message when an intent is filtered out due to project mismatch.
-     */
-    private String getFilteredIntentMessage(OperationType filteredIntent, String projectName) {
-        String projectDisplay = projectName != null ? projectName : "this service";
-
-        return switch (filteredIntent) {
-            case POLICY -> "I'm sorry, but I don't have access to insurance policy information through " + projectDisplay + ". " +
-                    "This service handles banking inquiries like credit card fee waivers and home loan closures. " +
-                    "For insurance policy questions, please contact your insurance provider directly.";
-            case CLAIMS -> "I'm sorry, but I don't have access to insurance claims information through " + projectDisplay + ". " +
-                    "This service handles banking inquiries like credit card fee waivers and home loan closures. " +
-                    "For insurance claims questions, please contact your insurance provider directly.";
-            case FEE_WAIVER -> "I'm sorry, but credit card fee waiver services are not available through " + projectDisplay + ". " +
-                    "This service handles insurance-related inquiries like policy details and claims. " +
-                    "For banking inquiries, please contact your bank directly.";
-            case HOME_LOAN_CLOSURE -> "I'm sorry, but home loan closure services are not available through " + projectDisplay + ". " +
-                    "This service handles insurance-related inquiries like policy details and claims. " +
-                    "For banking inquiries, please contact your bank directly.";
-            case BILLING -> "I'm sorry, but card billing and payment information is not available through " + projectDisplay + ". " +
-                    "For questions about your statement, outstanding balance or card status, " +
-                    "please contact your bank directly.";
-            default -> "I'm sorry, but I cannot help with that request through " + projectDisplay + ". " +
-                    "Please contact the appropriate service provider for assistance.";
-        };
     }
 
     /**
