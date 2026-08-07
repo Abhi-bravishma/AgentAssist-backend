@@ -1,5 +1,7 @@
 package com.agentassist.ai;
 
+import com.agentassist.configregistry.PromptService;
+import com.agentassist.configregistry.TemplateKeys;
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
 import com.agentassist.dto.responseDTO.ComplianceResponse;
@@ -13,6 +15,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Base class with shared AI prompt logic.
@@ -23,10 +26,12 @@ public abstract class BaseAiProvider implements AiProvider {
     protected final ChatModel chatModel;
     protected final ObjectMapper mapper = new ObjectMapper();
     protected final String providerName;
+    protected final PromptService promptService;
 
-    protected BaseAiProvider(ChatModel chatModel, String providerName) {
+    protected BaseAiProvider(ChatModel chatModel, String providerName, PromptService promptService) {
         this.chatModel = chatModel;
         this.providerName = providerName;
+        this.promptService = promptService;
         log.info("[AI] Provider initialized: {}", providerName);
     }
 
@@ -43,19 +48,8 @@ public abstract class BaseAiProvider implements AiProvider {
         long startTime = System.currentTimeMillis();
 
         try {
-            String prompt = """
-                You MUST return pure JSON only. No markdown. No commentary.
-
-                Output format:
-                {
-                  "sentiment": "positive | negative | neutral",
-                  "sentiment_score": number,
-                  "summary": "short summary",
-                  "suggestions": ["1 short empathetic reply"]
-                }
-
-                Analyze this text:
-                """ + text;
+            String prompt = promptService.renderDefault(TemplateKeys.AI_ANALYZE_TEXT,
+                    Map.of("text", text));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -90,73 +84,10 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                Analyze this customer service conversation. Return ONLY valid JSON.
-
-                ============================================================
-                LATEST MESSAGE (RESPOND TO THIS IN SUGGESTION):
-                ============================================================
-                "%s"
-
-                ============================================================
-                CONVERSATION HISTORY (%d messages):
-                ============================================================
-                %s
-
-                ============================================================
-                OUTPUT FORMAT (Return ONLY this JSON):
-                ============================================================
-                {
-                  "overall_sentiment_score": <-1 to 1>,
-                  "current_sentiment_score": <-1 to 1>,
-                  "current_sentiment_label": "positive" | "negative" | "neutral",
-                  "summary": "<end-to-end conversation summary>",
-                  "suggestions": ["<reply that DIRECTLY responds to LATEST message>"]
-                }
-
-                ============================================================
-                SUMMARY RULES:
-                ============================================================
-                - Summarize the ENTIRE conversation from FIRST message to LATEST
-                - Write 4-5 sentences covering the full interaction chronologically
-                - Include: what customer asked, what agent replied, information provided, current status
-                - Mention specific details (names, IDs, amounts, dates if discussed)
-                - NEVER include sentiment/emotion words (tone, neutral, feeling, etc.)
-
-                GOOD SUMMARY EXAMPLE:
-                "Customer initiated conversation inquiring about insurance policies. Agent retrieved data showing 3 active policies: Car Insurance (POL-0014), Travel Insurance (POL-0013), and Home Insurance (POL-0012). Customer then asked about claims status. Agent provided breakdown of 7 claims with 1 approved, 4 pending, and 2 rejected. Customer is currently asking about the claim filing process."
-
-                ============================================================
-                 SUGGESTION RULES (MUST RESPOND TO LATEST MESSAGE):
-                ============================================================
-                Your suggestion MUST respond to the LATEST MESSAGE above, NOT to earlier messages.
-
-                IF LATEST MESSAGE IS:
-                - "thank you" / "thanks" → Reply: "You're welcome! Is there anything else I can help you with?"
-                - "bye" / "goodbye" → Reply: "Goodbye! Have a great day. Feel free to reach out if you need help."
-                - "ok" / "okay" / "alright" → Reply: "Is there anything else I can assist you with?"
-                - "yes" / "no" → Respond appropriately to what they're confirming/denying
-                - A question → Answer that specific question
-                - A complaint → Address that complaint with empathy
-
-                - Generate EXACTLY 1 suggestion as direct reply to LATEST message
-                - Start with "Hi [Customer Name]," if name is known, else "Hi there,"
-
-                FORBIDDEN PHRASES:
-                 "As a helpful assistant..."
-                 "I would suggest..."
-                 "It may be beneficial..."
-
-                ============================================================
-                SENTIMENT SCORING RULES:
-                ============================================================
-                - Score range: -1 to +1
-                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
-                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
-                - MULTIPLE MESSAGES:
-                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
-                  * overall_sentiment_score = average of ALL message sentiments
-                """.formatted(latestUserMsg, messages.size(), sb.toString());
+            String prompt = promptService.renderDefault(TemplateKeys.AI_ANALYZE_CONVERSATION, Map.of(
+                    "latest_message", latestUserMsg,
+                    "message_count", String.valueOf(messages.size()),
+                    "conversation", sb.toString()));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -203,75 +134,11 @@ public abstract class BaseAiProvider implements AiProvider {
                 ? "CUSTOMER DATA:\n" + policyContext + "\n"
                 : "";
 
-            String prompt = """
-                Analyze this customer service conversation. Return ONLY valid JSON.
-
-                ============================================================
-                LATEST MESSAGE (RESPOND TO THIS IN SUGGESTION):
-                ============================================================
-                "%s"
-
-                %s
-                ============================================================
-                CONVERSATION HISTORY (%d messages):
-                ============================================================
-                %s
-
-                ============================================================
-                OUTPUT FORMAT (Return ONLY this JSON):
-                ============================================================
-                {
-                  "overall_sentiment_score": <-1 to 1>,
-                  "current_sentiment_score": <-1 to 1>,
-                  "current_sentiment_label": "positive" | "negative" | "neutral",
-                  "summary": "<end-to-end conversation summary>",
-                  "suggestions": ["<reply that DIRECTLY responds to LATEST message>"]
-                }
-
-                ============================================================
-                SUMMARY RULES:
-                ============================================================
-                - Summarize ENTIRE conversation from FIRST to LATEST message
-                - Write 4-5 sentences covering full interaction chronologically
-                - Include: what customer asked, what agent replied, data found, current status
-                - Include specific details (names, IDs, amounts, dates)
-                - DO NOT start with "Hi" - this is for agent reference
-                - NEVER include sentiment/emotion words
-
-                GOOD SUMMARY EXAMPLE:
-                "Customer initiated conversation inquiring about insurance policies. Agent retrieved data showing 3 active policies: Car, Travel, and Home Insurance. Customer asked about claims status. Agent provided breakdown showing 7 claims total. Customer is currently asking about claim filing process."
-
-                ============================================================
-                SUGGESTION RULES (MUST RESPOND TO LATEST MESSAGE):
-                ============================================================
-                Your suggestion MUST respond to the LATEST MESSAGE above, NOT to earlier messages.
-
-                IF LATEST MESSAGE IS:
-                - "thank you" / "thanks" → Reply: "You're welcome! Is there anything else I can help you with?"
-                - "bye" / "goodbye" → Reply: "Goodbye! Have a great day. Feel free to reach out if you need help."
-                - "ok" / "okay" / "alright" → Reply: "Is there anything else I can assist you with?"
-                - "yes" / "no" → Respond appropriately to what they're confirming/denying
-                - A question → Answer using customer data if available
-                - A complaint → Address with empathy
-
-                - Generate EXACTLY 1 suggestion as direct reply to LATEST message
-                - Start with "Hi [Customer Name]," if name is in context, else "Hi there,"
-
-                FORBIDDEN PHRASES:
-                 "As a helpful assistant..."
-                 "I would suggest..."
-                 "Based on the information..."
-
-                ============================================================
-                SENTIMENT SCORING RULES:
-                ============================================================
-                - Score range: -1 to +1
-                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
-                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
-                - MULTIPLE MESSAGES:
-                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
-                  * overall_sentiment_score = average of ALL message sentiments
-                """.formatted(latestUserMsg, contextSection, messages.size(), sb.toString());
+            String prompt = promptService.renderDefault(TemplateKeys.AI_ANALYZE_CONVERSATION_WITH_CONTEXT, Map.of(
+                    "latest_message", latestUserMsg,
+                    "context_section", contextSection,
+                    "message_count", String.valueOf(messages.size()),
+                    "conversation", sb.toString()));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -309,21 +176,8 @@ public abstract class BaseAiProvider implements AiProvider {
             // This translation becomes the knowledge base search query, so a mangled
             // proper noun does not just read badly - it lowers the embedding score and
             // pulls the wrong document into the results.
-            String prompt = """
-                Translate to English.
-                Output ONLY the translated text.
-
-                RULES:
-                - Proper nouns must survive translation: restaurant, hotel, venue, brand,
-                  product, card and programme names.
-                - If the proper noun has a well-known official English name, use that name.
-                - If you are not certain of the official English name, keep the original
-                  characters unchanged. NEVER translate a name character by character and
-                  never invent an English-sounding name for it.
-                - Keep numbers, times, dates, currency amounts and phone numbers unchanged.
-
-                Text: %s
-                """.formatted(text);
+            String prompt = promptService.renderDefault(TemplateKeys.AI_TRANSLATE_TO_ENGLISH,
+                    Map.of("text", text));
 
             String out = call(prompt);
             String result = (out == null || out.isBlank()) ? text : out.trim();
@@ -347,21 +201,9 @@ public abstract class BaseAiProvider implements AiProvider {
         long startTime = System.currentTimeMillis();
 
         try {
-            String prompt = """
-                Translate strictly to %s.
-                Output ONLY the translated text.
-
-                RULES:
-                - Proper nouns must survive translation: restaurant, hotel, venue, brand,
-                  product, card and programme names.
-                - If the proper noun has a well-known official name in the target language,
-                  use that name. Otherwise leave it exactly as written in the source.
-                  NEVER translate a name word by word and never invent a local name for it.
-                - Keep numbers, times, dates, currency amounts and phone numbers unchanged.
-                - Translate everything else naturally.
-
-                Text: %s
-                """.formatted(describeLanguage(targetLang), english);
+            String prompt = promptService.renderDefault(TemplateKeys.AI_TRANSLATE_FROM_ENGLISH, Map.of(
+                    "target_language", describeLanguage(targetLang),
+                    "text", english));
 
             String out = call(prompt);
             String result = (out == null || out.isBlank()) ? english : out.trim();
@@ -385,10 +227,8 @@ public abstract class BaseAiProvider implements AiProvider {
         long startTime = System.currentTimeMillis();
 
         try {
-            String prompt = """
-                Detect language. Return ONLY ISO 639-1 code.
-                Text: %s
-                """.formatted(text);
+            String prompt = promptService.renderDefault(TemplateKeys.AI_DETECT_LANGUAGE,
+                    Map.of("text", text));
 
             String lang = call(prompt);
             if (lang == null) {
@@ -519,13 +359,8 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                Return ONLY pure JSON:
-                {"overall_sentiment_score": number}
-
-                Compute overall sentiment score (-1 to +1) for these messages:
-                %s
-                """.formatted(sb.toString());
+            String prompt = promptService.renderDefault(TemplateKeys.AI_OVERALL_SENTIMENT,
+                    Map.of("conversation", sb.toString()));
 
             String content = cleanJson(call(prompt));
             JsonNode json = mapper.readTree(content);
@@ -553,73 +388,10 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are analyzing a customer service conversation. Return ONLY valid JSON.
-
-                PREVIOUS SUGGESTION (reword this - same info, different style):
-                "%s"
-
-                Required structure:
-                {
-                  "overall_sentiment_score": <-1 to 1>,
-                  "current_sentiment_score": <-1 to 1>,
-                  "current_sentiment_label": "positive" | "negative" | "neutral",
-                  "summary": "<4-5 sentence end-to-end conversation summary>",
-                  "suggestions": ["<reworded reply with same data>"]
-                }
-
-                ============================================================
-                REGENERATE RULES - SAME INFO, DIFFERENT WORDING:
-                ============================================================
-                - Keep the SAME customer data (names, numbers, amounts, eligibility)
-                - Change the WORDING and TONE (formal ↔ friendly ↔ empathetic)
-                - MUST include all specific details from previous suggestion
-                - DO NOT give generic advice - use ACTUAL data
-
-                FORBIDDEN PHRASES - NEVER USE:
-                "As a helpful assistant..."
-                "I would suggest..."
-                "It may be beneficial..."
-                 "I recommend that..."
-                 "Based on the information..."
-
-                CORRECT FORMAT:
-                 Start with "Hi [Customer Name]," or similar greeting
-                 Include SAME specific data (card numbers, amounts, status)
-                 Just change the wording/tone
-
-                EXAMPLE:
-                Previous: "Hi <Customer Name>, your Rewards card (1116) qualifies for fee waiver. Call (02) 88-700-700."
-                Regenerated: "Good news, <Customer Name>! Your Rewards card ending in 1116 is eligible for the annual fee waiver. Simply contact us at (02) 88-700-700 to process your request."
-
-                ============================================================
-                SUMMARY RULES:
-                ============================================================
-                - Summarize ENTIRE conversation from start to current (4-5 sentences)
-                - Include: what customer asked, what was discussed, data found, current status
-                - Include specific details (card numbers, amounts, eligibility)
-                - NO sentiment/emotion words
-
-                ============================================================
-                SENTIMENT SCORING RULES:
-                ============================================================
-                - Score range: -1 to +1
-                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
-                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
-                - MULTIPLE MESSAGES:
-                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
-                  * overall_sentiment_score = average of ALL message sentiments
-
-                Conversation:
-                %s
-
-                Latest user message:
-                "%s"
-                """.formatted(
-                    previousSuggestion != null ? previousSuggestion : "",
-                    sb.toString(),
-                    latestUserMsg
-                );
+            String prompt = promptService.renderDefault(TemplateKeys.AI_REGENERATE_SUGGESTIONS, Map.of(
+                    "previous_suggestion", previousSuggestion != null ? previousSuggestion : "",
+                    "conversation", sb.toString(),
+                    "latest_message", latestUserMsg));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -662,81 +434,12 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are a customer service AI assistant. You MUST use the REAL CUSTOMER DATA provided below.
-                Return ONLY valid JSON.
-
-                ============ CUSTOMER DATA CONTEXT ============
-                %s
-                ===============================================
-
-                PREVIOUS SUGGESTION TO REWORD:
-                "%s"
-
-                Required JSON:
-                {
-                  "overall_sentiment_score": <-1 to 1>,
-                  "current_sentiment_score": <-1 to 1>,
-                  "current_sentiment_label": "positive" | "negative" | "neutral",
-                  "summary": "<4-5 sentence end-to-end conversation summary>",
-                  "suggestions": ["<reworded reply with SAME customer data>"]
-                }
-
-                ============================================================
-                REGENERATE RULES - SAME DATA, DIFFERENT WORDING:
-                ============================================================
-                - Keep ALL customer-specific data (card numbers, amounts, eligibility status, thresholds)
-                - Change ONLY the wording and tone (formal ↔ friendly ↔ concise ↔ detailed)
-                - MUST include: card numbers, spend amounts, eligibility status, contact numbers
-                - DO NOT give generic advice - use ACTUAL customer data
-
-                FORBIDDEN PHRASES - NEVER USE:
-                 "As a helpful assistant..."
-                 "I would suggest..."
-                 "It may be beneficial..."
-                 "I recommend that..."
-                 "Based on the information..."
-
-                MANDATORY FORMAT:
-                Start with "Hi %s," or similar greeting
-                Include SAME specific data from previous suggestion
-                Include card numbers, amounts, eligibility
-                Provide contact info for next steps
-
-                EXAMPLE TRANSFORMATION:
-                Previous: "Hi <Customer Name>, your Rewards card (1116) qualifies for fee waiver with ₱30,000 spend. Call (02) 88-700-700."
-                Reworded: "Good news, <Customer Name>! Your Rewards card ending in 1116 meets the spend requirement of ₱30,000 and is eligible for the annual fee waiver. Please contact (02) 88-700-700 to proceed."
-
-                ============================================================
-                SUMMARY RULES:
-                ============================================================
-                - Summarize ENTIRE conversation (4-5 sentences)
-                - Include: what customer asked, data found, eligibility, current status
-                - Include specific details (card numbers, amounts)
-                - DO NOT start with "Hi"
-                - NO sentiment/emotion words
-
-                ============================================================
-                SENTIMENT SCORING RULES:
-                ============================================================
-                - Score range: -1 to +1
-                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
-                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
-                - MULTIPLE MESSAGES:
-                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
-                  * overall_sentiment_score = average of ALL message sentiments
-
-                Conversation:
-                %s
-
-                Latest message: "%s"
-                """.formatted(
-                    checklistContext,
-                    previousSuggestion != null ? previousSuggestion : "",
-                    customerName != null ? customerName : "there",
-                    sb.toString(),
-                    latestUserMsg
-                );
+            String prompt = promptService.renderDefault(TemplateKeys.AI_REGENERATE_SUGGESTIONS_WITH_CONTEXT, Map.of(
+                    "checklist_context", checklistContext,
+                    "previous_suggestion", previousSuggestion != null ? previousSuggestion : "",
+                    "customer_name", customerName != null ? customerName : "there",
+                    "conversation", sb.toString(),
+                    "latest_message", latestUserMsg));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -772,39 +475,9 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(transcript.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are analyzing a completed customer service conversation to determine if follow-up is required.
-                Return ONLY valid JSON.
-
-                CONVERSATION TRANSCRIPT:
-                %s
-
-                Customer Name: %s
-
-                Required JSON structure:
-                {
-                  "follow_up_required": true/false,
-                  "follow_up": "<reason for follow-up OR empty string if not required>",
-                  "conversation_summary": "<4-5 sentence comprehensive summary of the conversation>"
-                }
-
-                RULES:
-                - If follow_up_required is TRUE: "follow_up" must contain the reason (e.g., "Customer issue unresolved - claim pending approval")
-                - If follow_up_required is FALSE: "follow_up" must be empty string ""
-
-                FOLLOW-UP IS REQUIRED IF:
-                - Customer issue was NOT fully resolved
-                - Agent promised to call back or follow up
-                - Customer expressed frustration or dissatisfaction
-                - Pending actions mentioned (e.g., "we will process your request")
-                - Complaint was filed or escalation needed
-                - Customer asked to be contacted later
-
-                FOLLOW-UP IS NOT REQUIRED IF:
-                - Issue was completely resolved
-                - Customer expressed satisfaction/thanks
-                - Simple inquiry answered fully
-                """.formatted(sb.toString(), customerName != null ? customerName : "Unknown");
+            String prompt = promptService.renderDefault(TemplateKeys.AI_FOLLOW_UP_CHECK, Map.of(
+                    "transcript", sb.toString(),
+                    "customer_name", customerName != null ? customerName : "Unknown"));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -862,82 +535,11 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are a customer service AI assistant. You MUST use the REAL CUSTOMER DATA provided below.
-                Return ONLY valid JSON.
-
-                ============================================================
-                 LATEST MESSAGE (RESPOND TO THIS IN SUGGESTION):
-                ============================================================
-                "%s"
-
-                ============ CHECKLIST GUIDE + CUSTOMER DATA ============
-                %s
-                =========================================================
-
-                ============================================================
-                CONVERSATION HISTORY (%d messages):
-                ============================================================
-                %s
-
-                ============================================================
-                OUTPUT FORMAT (Return ONLY this JSON):
-                ============================================================
-                {
-                  "overall_sentiment_score": <-1 to 1>,
-                  "current_sentiment_score": <-1 to 1>,
-                  "current_sentiment_label": "positive" | "negative" | "neutral",
-                  "summary": "<end-to-end conversation summary>",
-                  "suggestions": ["<reply that DIRECTLY responds to LATEST message>"]
-                }
-
-                ============================================================
-                SUMMARY RULES (for agent's internal reference):
-                ============================================================
-                - Summarize the ENTIRE conversation from START to END
-                - Include: what customer asked, what agent replied, what data was found, decisions made, current status
-                - Write 4-5 sentences covering the FULL interaction chronologically
-                - Include specific details: card numbers, amounts, eligibility status, dates
-                - DO NOT start with "Hi" - this is for agent reference only
-                - NEVER include sentiment/emotion words
-
-                GOOD SUMMARY EXAMPLE:
-                "Customer initiated conversation requesting credit card annual fee waiver. System retrieved customer data showing {credit cards count} on file. Cashback card (ending 1117) has ₱50,000 annual spend which does not meet the ₱180,000 requirement for fee waiver. Rewards card (ending 1116) has ₱30,000 spend in 90 days which qualifies for NAFFL (No Annual Fee For Life). Customer was informed about eligibility and provided with next steps to call (02) 88-700-700."
-
-                ============================================================
-                SUGGESTION RULES (MUST RESPOND TO LATEST MESSAGE):
-                ============================================================
-                Your suggestion MUST respond to the LATEST MESSAGE above, NOT to earlier messages.
-
-                IF LATEST MESSAGE IS:
-                - "thank you" / "thanks" → Reply: "You're welcome! Is there anything else I can help you with?"
-                - "bye" / "goodbye" → Reply: "Goodbye! Have a great day. Feel free to reach out if you need help."
-                - "ok" / "okay" / "alright" → Reply: "Is there anything else I can assist you with?"
-                - "yes" / "no" → Respond appropriately to what they're confirming/denying
-                - A question about their data → Answer using the CUSTOMER DATA above
-                - A complaint → Address with empathy
-
-                TONE RULES (talking TO customer, not ABOUT them):
-                "Hi [First Name], you have {credit cards count} cards..."
-                "Your Rewards card qualifies..."
-                "Mr. [Name] has..." (WRONG)
-                "He has already met..." (WRONG)
-
-                FORBIDDEN PHRASES:
-                 "Based on the data..." / "According to records..."
-                 "Mr./Mrs. [Name]" (use first name only)
-                 Responding to old topics when customer said "thank you"
-
-                ============================================================
-                SENTIMENT SCORING RULES:
-                ============================================================
-                - Score range: -1 to +1
-                - Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
-                - SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
-                - MULTIPLE MESSAGES:
-                  * current_sentiment_score = 70%% latest message sentiment + 30%% trend
-                  * overall_sentiment_score = average of ALL message sentiments
-                """.formatted(latestUserMsg, checklistContext, messages.size(), sb.toString());
+            String prompt = promptService.renderDefault(TemplateKeys.AI_ANALYZE_CONVERSATION_WITH_CHECKLIST, Map.of(
+                    "latest_message", latestUserMsg,
+                    "checklist_context", checklistContext,
+                    "message_count", String.valueOf(messages.size()),
+                    "conversation", sb.toString()));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {
@@ -984,145 +586,8 @@ public abstract class BaseAiProvider implements AiProvider {
                 conversationContext.append(messages.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are a STRICT customer service intent classifier.
-                Return ONLY one of these exact values (no quotes, no explanation):
-                FEE_WAIVER
-                HOME_LOAN_CLOSURE
-                POLICY
-                CLAIMS
-                TELCO
-                BILLING
-                GENERAL
-
-                STRICT CLASSIFICATION RULES:
-
-                Return "FEE_WAIVER" if customer mentions ANY of these:
-                - Credit card fee waiver / annual fee waiver
-                - NAFFL (No Annual Fee For Life)
-                - Waiving/removing card fees
-                - "Am I eligible for fee waiver?" (checking eligibility)
-                - "Do I qualify for fee waiver?" (checking eligibility)
-                - "Which rewards do I have on my card?" (card benefits/rewards)
-                - "What benefits do I have on my credit card?" (card benefits)
-                - Asking about THEIR credit card data/eligibility/rewards
-
-                Return "HOME_LOAN_CLOSURE" if customer mentions ANY of these:
-                - CLOSING or SETTLING a home loan
-                - Loan FORECLOSURE or PRE-CLOSURE
-                - Paying OFF home loan EARLY
-                - Getting NOC after loan closure
-                - "How many home loans do I have?" (their loan data)
-                - "What is my home loan balance?" (their loan data)
-                - "What is my outstanding loan amount?" (their loan data)
-                - "What is my prepayment penalty?" (their loan data)
-                - "Show my home loan details" (their loan data)
-                - Asking about THEIR home loan data/balance/status
-
-                Return "POLICY" if customer wants to SEE/LIST/COUNT their personal policy DATA:
-                - "How many policies do I have?" (counting their policies)
-                - "What are my policies?" (listing their policies)
-                - "Show my policy details" (viewing their data)
-                - "List my policies" (listing their data)
-                - "What is my policy number?" (their specific data)
-                - KEY: Asking for their PERSONAL POLICY DATA
-
-                Return "CLAIMS" if customer wants to SEE/CHECK their personal claim DATA:
-                - "How many claims do I have?" (counting their claims)
-                - "What is my claim status?" (checking their status)
-                - "Show my claims" (listing their claims)
-                - "Is my claim approved?" (checking their status)
-                - KEY: Asking for their PERSONAL CLAIM DATA
-
-                Return "TELCO" if customer mentions ANY of these (mobile/telecom related):
-                - Mobile plan / data plan / internet package
-                - "What is my current plan?" / "Show my plan"
-                - "How much data do I have?" / "Check my quota" / "Remaining data"
-                - "I need more data" / "Upgrade my plan" / "Better plan"
-                - "Recommend a plan" / "Suggest a plan" / "Which plan"
-                - "Roaming" / "Travel to Singapore/Malaysia/Thailand"
-                - "Add-on" / "Extra data" / "Top up" / "Pulsa"
-                - "Data usage" / "Habis kuota" / "Kuota malam"
-                - "TikTok plan" / "YouTube plan" / "WhatsApp unlimited"
-                - "Prepaid" / "Postpaid" / "Recharge"
-                - "Weekly plan" / "Monthly plan" / "7 days" / "30 days"
-                - "Promo" / "Lebaran offer" / "Weekend special"
-                - "Cheap plan" / "Budget plan" / "Murah"
-                - "Student plan" / "Mahasiswa"
-                - KEY: Anything related to mobile/telecom plans, data, or services
-
-                Return "BILLING" when the customer asks about their PAYMENT POSITION or a
-                CARD RESTRICTION - in any wording, in any language. Judge by what the
-                customer needs to know, not by matching these words:
-                - What they owe: "how much do I owe", "outstanding amount", "my balance",
-                  "what's my bill", "minimum due", "statement balance"
-                - When to pay: "when is my payment due", "due date", "am I late",
-                  "am I overdue", "did my payment go through"
-                - A billing summary: "summarise my billing", "billing for my cards",
-                  "give me a summary of my account"
-                - A restricted card: "why is my card blocked", "card declined",
-                  "my card isn't working", "why can't I use my card"
-                - Restoring a card: "can my card be unblocked", "how do I unblock it",
-                  "what do I need to do to use my card again"
-                - Same meanings in other languages, e.g. "我還欠多少錢", "什麼時候到期",
-                  "我的卡為什麼被封鎖", "berapa tagihan saya"
-                - KEY: the answer would come from their STATEMENT or CARD STATUS
-
-                BILLING BOUNDARIES - these are NOT billing:
-                - Annual fee, late fee, waiving a fee, NAFFL, card rewards or benefits,
-                  fee eligibility → FEE_WAIVER
-                - Home loan balance, loan payoff, foreclosure, prepayment penalty
-                  → HOME_LOAN_CLOSURE
-                - Insurance policies or claims → POLICY or CLAIMS
-                - Mobile data, quota, recharge, mobile plans → TELCO
-
-                Return "GENERAL" for process/how-to/FAQ questions:
-                - "How do I renew my policy?" → GENERAL (process question)
-                - "How do I file a claim?" → GENERAL (process question)
-                - "What is a premium?" → GENERAL (definition)
-                - "What if I miss a payment?" → GENERAL (FAQ)
-                - "What documents do I need?" → GENERAL (FAQ)
-                - Greetings (hi, hello)
-
-                CRITICAL - MY/YOUR DATA vs GENERAL PROCESS:
-                | Question | Intent |
-                | "I want to waive my annual fee" | FEE_WAIVER |
-                | "Am I eligible for fee waiver?" | FEE_WAIVER |
-                | "Which rewards do I have?" | FEE_WAIVER |
-                | "I want to close my home loan" | HOME_LOAN_CLOSURE |
-                | "How many home loans do I have?" | HOME_LOAN_CLOSURE |
-                | "What is my home loan balance?" | HOME_LOAN_CLOSURE |
-                | "What is my outstanding loan amount?" | HOME_LOAN_CLOSURE |
-                | "What is my prepayment penalty?" | HOME_LOAN_CLOSURE |
-                | "How much do I owe on my card?" | BILLING |
-                | "What is my outstanding amount and due date?" | BILLING |
-                | "Summarise the billing for my cards" | BILLING |
-                | "Why is my card blocked?" | BILLING |
-                | "Can my card be unblocked?" | BILLING |
-                | "When is my payment due?" | BILLING |
-                | "What do I need to do to use my card again?" | BILLING |
-                | "How do I get my card working again?" | BILLING |
-                | "My card is not working, why?" | BILLING |
-                | "How many policies do I have?" | POLICY |
-                | "What is my claim status?" | CLAIMS |
-                | "I need more data" | TELCO |
-                | "What is my current plan?" | TELCO |
-                | "Recommend a plan for me" | TELCO |
-                | "Roaming for Singapore" | TELCO |
-                | "How do I file a claim?" | GENERAL |
-                | "What is a premium?" | GENERAL |
-
-                RULE: If question asks about MY/YOUR personal data (cards, loans, policies, claims, mobile plans) → use appropriate category
-                RULE: If question asks HOW TO DO something or WHAT IS something → GENERAL
-                RULE (OVERRIDES THE ABOVE): a "how do I" or "what do I need to do" question about
-                THEIR OWN card, payment or account is NOT general. "What do I need to do to use my
-                card again" is about their blocked card → BILLING. Only route to GENERAL when the
-                question is about a process in the abstract, with no reference to their own account.
-
-                LATEST MESSAGE: "%s"
-
-                Classification:
-                """.formatted(latestMessage);
+            String prompt = promptService.renderDefault(TemplateKeys.AI_DETECT_OPERATION,
+                    Map.of("latest_message", latestMessage));
 
             String result = call(prompt);
             if (result == null || result.isBlank()) {
@@ -1347,75 +812,8 @@ public abstract class BaseAiProvider implements AiProvider {
                 sb.append(i + 1).append(") ").append(agentMessages.get(i)).append("\n");
             }
 
-            String prompt = """
-                You are a compliance analyst for customer service conversations.
-                Analyze the following AGENT messages and determine if each compliance metric is met.
-                Return ONLY valid JSON with true/false for each metric.
-
-                ============================================================
-                AGENT MESSAGES TO ANALYZE:
-                ============================================================
-                %s
-
-                ============================================================
-                OUTPUT FORMAT (Return ONLY this JSON):
-                ============================================================
-                {
-                  "greeting": true/false,
-                  "empathy": true/false,
-                  "clarity": true/false,
-                  "productTnC": true/false,
-                  "valediction": true/false
-                }
-
-                ============================================================
-                COMPLIANCE METRICS DEFINITIONS:
-                ============================================================
-
-                GREETING (true if agent properly greeted the customer):
-                - Said "Hello", "Hi", "Good morning/afternoon/evening"
-                - Welcomed the customer
-                - Introduced themselves or the company
-                - Examples: "Hello, how can I help you?", "Hi there, thank you for contacting us"
-
-                EMPATHY (true if agent showed empathy or understanding):
-                - Acknowledged customer's feelings or situation
-                - Used phrases like "I understand", "I'm sorry to hear", "I appreciate your patience"
-                - Showed concern for customer's issue
-                - Validated customer's frustration or concern
-                - Examples: "I understand how frustrating this must be", "I'm sorry for the inconvenience"
-
-                CLARITY (true if agent communicated clearly):
-                - Provided clear and understandable explanations
-                - Avoided jargon or explained technical terms
-                - Gave step-by-step instructions when needed
-                - Confirmed understanding with customer
-                - Messages are well-structured and easy to follow
-
-                PRODUCT T&C (true if agent mentioned terms and conditions):
-                - Referenced terms and conditions
-                - Mentioned policies, rules, or guidelines
-                - Explained product limitations or requirements
-                - Discussed eligibility criteria
-                - Mentioned fees, charges, or penalties
-                - Examples: "According to our policy", "The terms state that", "Please note the conditions"
-
-                VALEDICTION (true if agent properly closed the conversation):
-                - Said goodbye or closing statement
-                - Thanked the customer
-                - Offered further assistance
-                - Used closing phrases like "Have a great day", "Thank you for contacting us"
-                - Asked if there's anything else they can help with
-                - Examples: "Is there anything else I can help you with?", "Thank you, have a great day!"
-
-                ============================================================
-                IMPORTANT RULES:
-                ============================================================
-                - Only analyze AGENT messages, not customer messages
-                - Return true ONLY if the metric is clearly met
-                - Return false if uncertain or metric is not present
-                - Be strict in evaluation - compliance must be clearly demonstrated
-                """.formatted(sb.toString());
+            String prompt = promptService.renderDefault(TemplateKeys.AI_COMPLIANCE,
+                    Map.of("agent_messages", sb.toString()));
 
             String content = call(prompt);
             if (content == null || content.isBlank()) {

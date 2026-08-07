@@ -1,7 +1,8 @@
 package com.agentassist.golden;
 
 import com.agentassist.ai.BaseAiProvider;
-import com.agentassist.service.checklist.ChecklistService;
+import com.agentassist.configregistry.ConfigRegistryTestBase;
+import com.agentassist.configregistry.PromptService;
 import com.agentassist.service.checklist.ChecklistService.OperationType;
 import com.agentassist.service.processing.ConversationProcessingService;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p>No LLM is ever called: {@link BaseAiProvider#call} is overridden to
  * capture the outgoing prompt and return a canned parseable response.
+ *
+ * <p>Since commit 6 the provider resolves its prompts from the registry, so
+ * this test now runs against H2 + the real Liquibase seed — making it the
+ * END-TO-END gate: provider method → registry template → rendered prompt →
+ * fixture bytes.
  */
-class GoldenPromptRegressionTest {
+class GoldenPromptRegressionTest extends ConfigRegistryTestBase {
 
     private static final Path GOLDEN_DIR = Path.of("src", "test", "resources", "golden");
 
@@ -40,8 +46,8 @@ class GoldenPromptRegressionTest {
         private final List<String> prompts = new ArrayList<>();
         private String cannedResponse = "{}";
 
-        CapturingProvider() {
-            super(null, "golden-capture");
+        CapturingProvider(PromptService promptService) {
+            super(null, "golden-capture", promptService);
         }
 
         @Override
@@ -79,21 +85,21 @@ class GoldenPromptRegressionTest {
 
     @Test
     void analyzeText() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeText(GoldenFixtureInputs.TEXT);
         compareOrCapture("ai.analyze_text", p.lastPrompt());
     }
 
     @Test
     void analyzeConversation() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeConversation(GoldenFixtureInputs.CONVERSATION, GoldenFixtureInputs.LATEST_MESSAGE);
         compareOrCapture("ai.analyze_conversation", p.lastPrompt());
     }
 
     @Test
     void analyzeConversationWithContext_withContext() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeConversationWithContext(GoldenFixtureInputs.CONVERSATION,
                 GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.POLICY_CONTEXT);
         compareOrCapture("ai.analyze_conversation_with_context__with_context", p.lastPrompt());
@@ -101,7 +107,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void analyzeConversationWithContext_noContext() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeConversationWithContext(GoldenFixtureInputs.CONVERSATION,
                 GoldenFixtureInputs.LATEST_MESSAGE, null);
         compareOrCapture("ai.analyze_conversation_with_context__no_context", p.lastPrompt());
@@ -109,7 +115,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void analyzeConversationWithChecklist() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeConversationWithChecklist(GoldenFixtureInputs.CONVERSATION,
                 GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.CHECKLIST_CONTEXT,
                 GoldenFixtureInputs.OPERATION_TYPE);
@@ -118,7 +124,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void translateToEnglish() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "ok";
         p.translateToEnglish(GoldenFixtureInputs.TEXT);
         compareOrCapture("ai.translate_to_english", p.lastPrompt());
@@ -126,7 +132,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void translateFromEnglish_describedLanguage() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "ok";
         p.translateFromEnglish(GoldenFixtureInputs.TEXT, "zh-Hant");
         compareOrCapture("ai.translate_from_english__zh-Hant", p.lastPrompt());
@@ -134,7 +140,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void translateFromEnglish_rawTag() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "ok";
         p.translateFromEnglish(GoldenFixtureInputs.TEXT, "fr");
         compareOrCapture("ai.translate_from_english__fr", p.lastPrompt());
@@ -142,7 +148,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void detectLanguage() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "en";
         p.detectLanguage(GoldenFixtureInputs.TEXT);
         compareOrCapture("ai.detect_language", p.lastPrompt());
@@ -150,7 +156,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void detectOperation() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "GENERAL";
         p.detectOperationType(GoldenFixtureInputs.CONVERSATION, GoldenFixtureInputs.LATEST_MESSAGE);
         compareOrCapture("ai.detect_operation", p.lastPrompt());
@@ -158,7 +164,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void overallSentiment() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.cannedResponse = "{\"overall_sentiment_score\": 0.1}";
         p.computeOverallSentiment(GoldenFixtureInputs.CONVERSATION);
         compareOrCapture("ai.overall_sentiment", p.lastPrompt());
@@ -166,7 +172,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void regenerateSuggestions() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.regenerateSuggestions(GoldenFixtureInputs.CONVERSATION,
                 GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.PREVIOUS_SUGGESTION);
         compareOrCapture("ai.regenerate_suggestions", p.lastPrompt());
@@ -174,7 +180,7 @@ class GoldenPromptRegressionTest {
 
     @Test
     void regenerateSuggestionsWithContext() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.regenerateSuggestionsWithContext(GoldenFixtureInputs.CONVERSATION,
                 GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.PREVIOUS_SUGGESTION,
                 GoldenFixtureInputs.CHECKLIST_CONTEXT, GoldenFixtureInputs.CUSTOMER_NAME);
@@ -183,14 +189,14 @@ class GoldenPromptRegressionTest {
 
     @Test
     void followUpCheck() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeFollowUpRequirement(GoldenFixtureInputs.TRANSCRIPT, GoldenFixtureInputs.CUSTOMER_NAME);
         compareOrCapture("ai.follow_up_check", p.lastPrompt());
     }
 
     @Test
     void compliance() {
-        CapturingProvider p = new CapturingProvider();
+        CapturingProvider p = new CapturingProvider(promptService);
         p.analyzeCompliance(GoldenFixtureInputs.AGENT_MESSAGES, GoldenFixtureInputs.INTERACTION_ID);
         compareOrCapture("ai.compliance", p.lastPrompt());
     }
