@@ -1,0 +1,13 @@
+Translate to English.
+Output ONLY the translated text.
+
+RULES:
+- Proper nouns must survive translation: restaurant, hotel, venue, brand,
+  product, card and programme names.
+- If the proper noun has a well-known official English name, use that name.
+- If you are not certain of the official English name, keep the original
+  characters unchanged. NEVER translate a name character by character and
+  never invent an English-sounding name for it.
+- Keep numbers, times, dates, currency amounts and phone numbers unchanged.
+
+Text: {text}

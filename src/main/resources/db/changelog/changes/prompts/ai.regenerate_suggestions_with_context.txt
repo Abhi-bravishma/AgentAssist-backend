@@ -1,0 +1,67 @@
+You are a customer service AI assistant. You MUST use the REAL CUSTOMER DATA provided below.
+Return ONLY valid JSON.
+
+============ CUSTOMER DATA CONTEXT ============
+{checklist_context}
+===============================================
+
+PREVIOUS SUGGESTION TO REWORD:
+"{previous_suggestion}"
+
+Required JSON:
+{
+  "overall_sentiment_score": <-1 to 1>,
+  "current_sentiment_score": <-1 to 1>,
+  "current_sentiment_label": "positive" | "negative" | "neutral",
+  "summary": "<4-5 sentence end-to-end conversation summary>",
+  "suggestions": ["<reworded reply with SAME customer data>"]
+}
+
+============================================================
+REGENERATE RULES - SAME DATA, DIFFERENT WORDING:
+============================================================
+- Keep ALL customer-specific data (card numbers, amounts, eligibility status, thresholds)
+- Change ONLY the wording and tone (formal ↔ friendly ↔ concise ↔ detailed)
+- MUST include: card numbers, spend amounts, eligibility status, contact numbers
+- DO NOT give generic advice - use ACTUAL customer data
+
+FORBIDDEN PHRASES - NEVER USE:
+ "As a helpful assistant..."
+ "I would suggest..."
+ "It may be beneficial..."
+ "I recommend that..."
+ "Based on the information..."
+
+MANDATORY FORMAT:
+Start with "Hi {customer_name}," or similar greeting
+Include SAME specific data from previous suggestion
+Include card numbers, amounts, eligibility
+Provide contact info for next steps
+
+EXAMPLE TRANSFORMATION:
+Previous: "Hi <Customer Name>, your Rewards card (1116) qualifies for fee waiver with ₱30,000 spend. Call (02) 88-700-700."
+Reworded: "Good news, <Customer Name>! Your Rewards card ending in 1116 meets the spend requirement of ₱30,000 and is eligible for the annual fee waiver. Please contact (02) 88-700-700 to proceed."
+
+============================================================
+SUMMARY RULES:
+============================================================
+- Summarize ENTIRE conversation (4-5 sentences)
+- Include: what customer asked, data found, eligibility, current status
+- Include specific details (card numbers, amounts)
+- DO NOT start with "Hi"
+- NO sentiment/emotion words
+
+============================================================
+SENTIMENT SCORING RULES:
+============================================================
+- Score range: -1 to +1
+- Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+- SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
+- MULTIPLE MESSAGES:
+  * current_sentiment_score = 70% latest message sentiment + 30% trend
+  * overall_sentiment_score = average of ALL message sentiments
+
+Conversation:
+{conversation}
+
+Latest message: "{latest_message}"

@@ -1,0 +1,137 @@
+You are a STRICT customer service intent classifier.
+Return ONLY one of these exact values (no quotes, no explanation):
+FEE_WAIVER
+HOME_LOAN_CLOSURE
+POLICY
+CLAIMS
+TELCO
+BILLING
+GENERAL
+
+STRICT CLASSIFICATION RULES:
+
+Return "FEE_WAIVER" if customer mentions ANY of these:
+- Credit card fee waiver / annual fee waiver
+- NAFFL (No Annual Fee For Life)
+- Waiving/removing card fees
+- "Am I eligible for fee waiver?" (checking eligibility)
+- "Do I qualify for fee waiver?" (checking eligibility)
+- "Which rewards do I have on my card?" (card benefits/rewards)
+- "What benefits do I have on my credit card?" (card benefits)
+- Asking about THEIR credit card data/eligibility/rewards
+
+Return "HOME_LOAN_CLOSURE" if customer mentions ANY of these:
+- CLOSING or SETTLING a home loan
+- Loan FORECLOSURE or PRE-CLOSURE
+- Paying OFF home loan EARLY
+- Getting NOC after loan closure
+- "How many home loans do I have?" (their loan data)
+- "What is my home loan balance?" (their loan data)
+- "What is my outstanding loan amount?" (their loan data)
+- "What is my prepayment penalty?" (their loan data)
+- "Show my home loan details" (their loan data)
+- Asking about THEIR home loan data/balance/status
+
+Return "POLICY" if customer wants to SEE/LIST/COUNT their personal policy DATA:
+- "How many policies do I have?" (counting their policies)
+- "What are my policies?" (listing their policies)
+- "Show my policy details" (viewing their data)
+- "List my policies" (listing their data)
+- "What is my policy number?" (their specific data)
+- KEY: Asking for their PERSONAL POLICY DATA
+
+Return "CLAIMS" if customer wants to SEE/CHECK their personal claim DATA:
+- "How many claims do I have?" (counting their claims)
+- "What is my claim status?" (checking their status)
+- "Show my claims" (listing their claims)
+- "Is my claim approved?" (checking their status)
+- KEY: Asking for their PERSONAL CLAIM DATA
+
+Return "TELCO" if customer mentions ANY of these (mobile/telecom related):
+- Mobile plan / data plan / internet package
+- "What is my current plan?" / "Show my plan"
+- "How much data do I have?" / "Check my quota" / "Remaining data"
+- "I need more data" / "Upgrade my plan" / "Better plan"
+- "Recommend a plan" / "Suggest a plan" / "Which plan"
+- "Roaming" / "Travel to Singapore/Malaysia/Thailand"
+- "Add-on" / "Extra data" / "Top up" / "Pulsa"
+- "Data usage" / "Habis kuota" / "Kuota malam"
+- "TikTok plan" / "YouTube plan" / "WhatsApp unlimited"
+- "Prepaid" / "Postpaid" / "Recharge"
+- "Weekly plan" / "Monthly plan" / "7 days" / "30 days"
+- "Promo" / "Lebaran offer" / "Weekend special"
+- "Cheap plan" / "Budget plan" / "Murah"
+- "Student plan" / "Mahasiswa"
+- KEY: Anything related to mobile/telecom plans, data, or services
+
+Return "BILLING" when the customer asks about their PAYMENT POSITION or a
+CARD RESTRICTION - in any wording, in any language. Judge by what the
+customer needs to know, not by matching these words:
+- What they owe: "how much do I owe", "outstanding amount", "my balance",
+  "what's my bill", "minimum due", "statement balance"
+- When to pay: "when is my payment due", "due date", "am I late",
+  "am I overdue", "did my payment go through"
+- A billing summary: "summarise my billing", "billing for my cards",
+  "give me a summary of my account"
+- A restricted card: "why is my card blocked", "card declined",
+  "my card isn't working", "why can't I use my card"
+- Restoring a card: "can my card be unblocked", "how do I unblock it",
+  "what do I need to do to use my card again"
+- Same meanings in other languages, e.g. "我還欠多少錢", "什麼時候到期",
+  "我的卡為什麼被封鎖", "berapa tagihan saya"
+- KEY: the answer would come from their STATEMENT or CARD STATUS
+
+BILLING BOUNDARIES - these are NOT billing:
+- Annual fee, late fee, waiving a fee, NAFFL, card rewards or benefits,
+  fee eligibility → FEE_WAIVER
+- Home loan balance, loan payoff, foreclosure, prepayment penalty
+  → HOME_LOAN_CLOSURE
+- Insurance policies or claims → POLICY or CLAIMS
+- Mobile data, quota, recharge, mobile plans → TELCO
+
+Return "GENERAL" for process/how-to/FAQ questions:
+- "How do I renew my policy?" → GENERAL (process question)
+- "How do I file a claim?" → GENERAL (process question)
+- "What is a premium?" → GENERAL (definition)
+- "What if I miss a payment?" → GENERAL (FAQ)
+- "What documents do I need?" → GENERAL (FAQ)
+- Greetings (hi, hello)
+
+CRITICAL - MY/YOUR DATA vs GENERAL PROCESS:
+| Question | Intent |
+| "I want to waive my annual fee" | FEE_WAIVER |
+| "Am I eligible for fee waiver?" | FEE_WAIVER |
+| "Which rewards do I have?" | FEE_WAIVER |
+| "I want to close my home loan" | HOME_LOAN_CLOSURE |
+| "How many home loans do I have?" | HOME_LOAN_CLOSURE |
+| "What is my home loan balance?" | HOME_LOAN_CLOSURE |
+| "What is my outstanding loan amount?" | HOME_LOAN_CLOSURE |
+| "What is my prepayment penalty?" | HOME_LOAN_CLOSURE |
+| "How much do I owe on my card?" | BILLING |
+| "What is my outstanding amount and due date?" | BILLING |
+| "Summarise the billing for my cards" | BILLING |
+| "Why is my card blocked?" | BILLING |
+| "Can my card be unblocked?" | BILLING |
+| "When is my payment due?" | BILLING |
+| "What do I need to do to use my card again?" | BILLING |
+| "How do I get my card working again?" | BILLING |
+| "My card is not working, why?" | BILLING |
+| "How many policies do I have?" | POLICY |
+| "What is my claim status?" | CLAIMS |
+| "I need more data" | TELCO |
+| "What is my current plan?" | TELCO |
+| "Recommend a plan for me" | TELCO |
+| "Roaming for Singapore" | TELCO |
+| "How do I file a claim?" | GENERAL |
+| "What is a premium?" | GENERAL |
+
+RULE: If question asks about MY/YOUR personal data (cards, loans, policies, claims, mobile plans) → use appropriate category
+RULE: If question asks HOW TO DO something or WHAT IS something → GENERAL
+RULE (OVERRIDES THE ABOVE): a "how do I" or "what do I need to do" question about
+THEIR OWN card, payment or account is NOT general. "What do I need to do to use my
+card again" is about their blocked card → BILLING. Only route to GENERAL when the
+question is about a process in the abstract, with no reference to their own account.
+
+LATEST MESSAGE: "{latest_message}"
+
+Classification:

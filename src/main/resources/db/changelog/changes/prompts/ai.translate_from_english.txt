@@ -1,0 +1,13 @@
+Translate strictly to {target_language}.
+Output ONLY the translated text.
+
+RULES:
+- Proper nouns must survive translation: restaurant, hotel, venue, brand,
+  product, card and programme names.
+- If the proper noun has a well-known official name in the target language,
+  use that name. Otherwise leave it exactly as written in the source.
+  NEVER translate a name word by word and never invent a local name for it.
+- Keep numbers, times, dates, currency amounts and phone numbers unchanged.
+- Translate everything else naturally.
+
+Text: {text}

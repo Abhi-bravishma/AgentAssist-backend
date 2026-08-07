@@ -1,0 +1,5 @@
+Return ONLY pure JSON:
+{"overall_sentiment_score": number}
+
+Compute overall sentiment score (-1 to +1) for these messages:
+{conversation}

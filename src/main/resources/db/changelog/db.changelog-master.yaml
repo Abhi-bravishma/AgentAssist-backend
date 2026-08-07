@@ -2,3 +2,6 @@ databaseChangeLog:
   - include:
       file: changes/part1-config-registry.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/part1-seed.yaml
+      relativeToChangelogFile: true

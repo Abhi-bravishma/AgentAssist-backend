@@ -1,0 +1,448 @@
+# Part 1 restructure — seed data (docs/RESTRUCTURE_PART1_PLAN.md §6).
+#
+# Every prompt/checklist/message is loaded from a file under prompts/ via
+# valueClobFile (UTF-8). Those files were derived MECHANICALLY from the golden
+# fixtures captured off the pre-restructure code (see
+# src/test/java/com/agentassist/golden), with %s slots converted to named
+# {placeholders} and %% already collapsed to % — i.e. they hold the RENDERED
+# escape form the model actually receives. Do not hand-edit them without
+# re-running the golden prompt tests.
+#
+# FK values use scalar subselects on the natural keys so the seed is
+# independent of generated ids.
+databaseChangeLog:
+
+  - changeSet:
+      id: part1-10-seed-projects
+      author: restructure-part1
+      changes:
+        - insert:
+            tableName: aa_project
+            columns:
+              - column: { name: code, value: "METRO" }
+              - column: { name: display_name, value: "Metrobank" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_project
+            columns:
+              - column: { name: code, value: "SCB" }
+              - column: { name: display_name, value: "Standard Chartered" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_project
+            columns:
+              - column: { name: code, value: "ALLIANZ" }
+              - column: { name: display_name, value: "Allianz" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_project
+            columns:
+              - column: { name: code, value: "TELCO" }
+              - column: { name: display_name, value: "Telco (XL/AXIS)" }
+              - column: { name: active, valueBoolean: true }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_project WHERE code IN ('METRO','SCB','ALLIANZ','TELCO')
+
+  - changeSet:
+      id: part1-11-seed-brand-attributes
+      author: restructure-part1
+      comment: >
+        Exact strings from resolveBankName/resolveHotline/resolveLoanEmail.
+        NULL-project rows are the neutral global defaults. Note the documented
+        asymmetry (plan §4.6): for an UNKNOWN project, bank_name falls back to
+        the project code itself — that rule lives in BrandService, not here.
+      changes:
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: attr_key, value: "bank_name" }
+              - column: { name: attr_value, value: "your bank" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: attr_key, value: "hotline" }
+              - column: { name: attr_value, value: "the customer service number printed on the back of the card" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: attr_key, value: "loan_email" }
+              - column: { name: attr_value, value: "the loan servicing email address on the customer's statement" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: attr_key, value: "bank_name" }
+              - column: { name: attr_value, value: "Metrobank" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: attr_key, value: "hotline" }
+              - column: { name: attr_value, value: "(02) 88-700-700" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: attr_key, value: "loan_email" }
+              - column: { name: attr_value, value: "CLOD-ASFD@metrobank.com.ph" }
+        - insert:
+            tableName: aa_brand_attribute
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'SCB')" }
+              - column: { name: attr_key, value: "bank_name" }
+              - column: { name: attr_value, value: "Standard Chartered" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_brand_attribute WHERE attr_key IN ('bank_name','hotline','loan_email')
+
+  - changeSet:
+      id: part1-12-seed-intents
+      author: restructure-part1
+      comment: >
+        The 6 real operation types (NONE is never stored). TELCO's filtered
+        message is the old switch's default-branch text — the switch had no
+        TELCO case. description stays NULL until Part 2 generates the
+        classifier prompt from it.
+      changes:
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "FEE_WAIVER" }
+              - column: { name: display_name, value: "Fee Waiver" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.FEE_WAIVER.txt" }
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "HOME_LOAN_CLOSURE" }
+              - column: { name: display_name, value: "Home Loan Closure" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.HOME_LOAN_CLOSURE.txt" }
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "POLICY" }
+              - column: { name: display_name, value: "Policy" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.POLICY.txt" }
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "CLAIMS" }
+              - column: { name: display_name, value: "Claims" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.CLAIMS.txt" }
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "TELCO" }
+              - column: { name: display_name, value: "Telco" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.TELCO.txt" }
+        - insert:
+            tableName: aa_intent
+            columns:
+              - column: { name: code, value: "BILLING" }
+              - column: { name: display_name, value: "Billing" }
+              - column: { name: active, valueBoolean: true }
+              - column: { name: filtered_message_template, valueClobFile: "prompts/filtered.BILLING.txt" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_intent WHERE code IN ('FEE_WAIVER','HOME_LOAN_CLOSURE','POLICY','CLAIMS','TELCO','BILLING')
+
+  - changeSet:
+      id: part1-13-seed-project-intents
+      author: restructure-part1
+      comment: >
+        Mirrors isOperationValidForProject() exactly. A project with NO rows
+        allows all intents; these rows restrict the four seeded projects to
+        their old switch cases.
+      changes:
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'FEE_WAIVER')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'HOME_LOAN_CLOSURE')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'METRO')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'BILLING')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'SCB')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'FEE_WAIVER')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'SCB')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'BILLING')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'ALLIANZ')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'POLICY')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'ALLIANZ')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'CLAIMS')" }
+              - column: { name: enabled, valueBoolean: true }
+        - insert:
+            tableName: aa_project_intent
+            columns:
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'TELCO')" }
+              - column: { name: intent_id, valueComputed: "(SELECT id FROM aa_intent WHERE code = 'TELCO')" }
+              - column: { name: enabled, valueBoolean: true }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_project_intent
+
+  - changeSet:
+      id: part1-14-seed-prompt-templates
+      author: restructure-part1
+      comment: >
+        All 21 templates as version 1 PUBLISHED. Only checklist.fee_waiver has
+        a project override (SCB); every other row is the NULL-project default.
+      changes:
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.analyze_text" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.analyze_text.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.analyze_conversation" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.analyze_conversation.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.analyze_conversation_with_context" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.analyze_conversation_with_context.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.analyze_conversation_with_checklist" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.analyze_conversation_with_checklist.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.translate_to_english" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.translate_to_english.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.translate_from_english" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.translate_from_english.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.detect_language" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.detect_language.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.detect_operation" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.detect_operation.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.overall_sentiment" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.overall_sentiment.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.regenerate_suggestions" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.regenerate_suggestions.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.regenerate_suggestions_with_context" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.regenerate_suggestions_with_context.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.follow_up_check" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.follow_up_check.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.compliance" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/ai.compliance.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.fee_waiver" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.fee_waiver.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.fee_waiver" }
+              - column: { name: project_id, valueComputed: "(SELECT id FROM aa_project WHERE code = 'SCB')" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.fee_waiver__SCB.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.home_loan_closure" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.home_loan_closure.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.billing" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.billing.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.policy" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.policy.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.claims" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.claims.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "checklist.telco" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/checklist.telco.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "system.no_knowledge_reply" }
+              - column: { name: version, valueNumeric: 1 }
+              - column: { name: content, valueClobFile: "prompts/system.no_knowledge_reply.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part1-seed" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_prompt_template WHERE created_by = 'part1-seed'
+
+  - changeSet:
+      id: part1-15-seed-languages
+      author: restructure-part1
+      comment: >
+        Chinese display names are the EXACT strings describeLanguage() produces
+        today. Nothing reads this table until phase 1c switches the translation
+        prompt to it — seeding is inert for byte-identity.
+      changes:
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "en" }
+              - column: { name: display_name, value: "English" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "zh" }
+              - column: { name: display_name, value: "Chinese" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "zh-Hant" }
+              - column: { name: display_name, value: "Traditional Chinese (繁體中文), using Traditional characters only" }
+              - column: { name: script, value: "Hant" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "zh-Hans" }
+              - column: { name: display_name, value: "Simplified Chinese (简体中文), using Simplified characters only" }
+              - column: { name: script, value: "Hans" }
+              - column: { name: active, valueBoolean: true }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_language WHERE code IN ('en','zh','zh-Hant','zh-Hans')
+
+  - changeSet:
+      id: part1-16-seed-settings
+      author: restructure-part1
+      comment: >
+        Bootstrap value matches today's ai.provider. After this, the DATABASE
+        is authoritative for the active provider; the yaml property remains
+        only as the value this seed copied.
+      changes:
+        - insert:
+            tableName: aa_setting
+            columns:
+              - column: { name: setting_key, value: "ai.active_provider" }
+              - column: { name: setting_value, value: "openai" }
+              - column: { name: updated_by, value: "part1-seed" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_setting WHERE setting_key = 'ai.active_provider'

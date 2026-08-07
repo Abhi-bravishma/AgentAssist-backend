@@ -1,0 +1,2 @@
+Detect language. Return ONLY ISO 639-1 code.
+Text: {text}

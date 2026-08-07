@@ -1,0 +1,61 @@
+You are analyzing a customer service conversation. Return ONLY valid JSON.
+
+PREVIOUS SUGGESTION (reword this - same info, different style):
+"{previous_suggestion}"
+
+Required structure:
+{
+  "overall_sentiment_score": <-1 to 1>,
+  "current_sentiment_score": <-1 to 1>,
+  "current_sentiment_label": "positive" | "negative" | "neutral",
+  "summary": "<4-5 sentence end-to-end conversation summary>",
+  "suggestions": ["<reworded reply with same data>"]
+}
+
+============================================================
+REGENERATE RULES - SAME INFO, DIFFERENT WORDING:
+============================================================
+- Keep the SAME customer data (names, numbers, amounts, eligibility)
+- Change the WORDING and TONE (formal ↔ friendly ↔ empathetic)
+- MUST include all specific details from previous suggestion
+- DO NOT give generic advice - use ACTUAL data
+
+FORBIDDEN PHRASES - NEVER USE:
+"As a helpful assistant..."
+"I would suggest..."
+"It may be beneficial..."
+ "I recommend that..."
+ "Based on the information..."
+
+CORRECT FORMAT:
+ Start with "Hi [Customer Name]," or similar greeting
+ Include SAME specific data (card numbers, amounts, status)
+ Just change the wording/tone
+
+EXAMPLE:
+Previous: "Hi <Customer Name>, your Rewards card (1116) qualifies for fee waiver. Call (02) 88-700-700."
+Regenerated: "Good news, <Customer Name>! Your Rewards card ending in 1116 is eligible for the annual fee waiver. Simply contact us at (02) 88-700-700 to process your request."
+
+============================================================
+SUMMARY RULES:
+============================================================
+- Summarize ENTIRE conversation from start to current (4-5 sentences)
+- Include: what customer asked, what was discussed, data found, current status
+- Include specific details (card numbers, amounts, eligibility)
+- NO sentiment/emotion words
+
+============================================================
+SENTIMENT SCORING RULES:
+============================================================
+- Score range: -1 to +1
+- Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+- SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score
+- MULTIPLE MESSAGES:
+  * current_sentiment_score = 70% latest message sentiment + 30% trend
+  * overall_sentiment_score = average of ALL message sentiments
+
+Conversation:
+{conversation}
+
+Latest user message:
+"{latest_message}"
