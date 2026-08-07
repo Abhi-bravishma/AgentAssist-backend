@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Assist — Knowledge Base</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c1f24;
+    --muted: #697386;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --danger: #dc2626;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --paused: #b45309;
+    --paused-bg: #fef3c7;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --border: #2c313a; --text: #e8eaed;
+      --muted: #9aa3b2; --accent: #3b82f6; --danger: #f87171; --ok: #4ade80;
+      --ok-bg: #14351f; --paused: #fbbf24; --paused-bg: #3a2c0a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .spacer { flex: 1; }
+  .pill {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: var(--ok-bg); color: var(--ok); font-weight: 600;
+  }
+  .pill.down { background: #fee2e2; color: var(--danger); }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 14px; font-weight: 600; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], select, input[type=file] {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); font: inherit; min-width: 180px;
+  }
+  button {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid transparent;
+    background: var(--accent); color: var(--accent-fg); font: inherit;
+    font-weight: 500; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; border-color: var(--border); color: var(--text); }
+  button.link { background: none; border: none; color: var(--accent); padding: 4px 6px; }
+  button.link.danger { color: var(--danger); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.name { font-weight: 500; word-break: break-word; }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  }
+  .state { font-size: 12px; font-weight: 600; }
+  .state.on { color: var(--ok); }
+  .state.off { color: var(--paused); }
+  tr.paused td.name { opacity: .55; text-decoration: line-through; }
+  .scroll { overflow-x: auto; }
+  .empty { text-align: center; color: var(--muted); padding: 32px; }
+  .foot { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  #toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--panel); padding: 10px 18px;
+    border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.err { background: var(--danger); color: #fff; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Agent Assist — Knowledge Base</h1>
+  <span id="status" class="pill">checking…</span>
+  <span class="spacer"></span>
+  <span id="count" style="color:var(--muted);font-size:12px"></span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Upload documents</h2>
+    <div class="row">
+      <div>
+        <label for="files">Files — PDF, DOCX, DOC, TXT, MD, XLSX, CSV, PPTX</label>
+        <input type="file" id="files" multiple>
+      </div>
+      <div>
+        <label for="upProject">Project</label>
+        <input type="text" id="upProject" list="projects" placeholder="e.g. HOSPITALITY">
+        <datalist id="projects"></datalist>
+      </div>
+      <div>
+        <label for="upCategory">Category (optional)</label>
+        <input type="text" id="upCategory" placeholder="e.g. dining">
+      </div>
+      <button id="uploadBtn">Upload</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="margin-bottom:14px">
+      <h2 style="margin:0">Documents</h2>
+      <span class="spacer"></span>
+      <div>
+        <label for="filterProject">Filter by project</label>
+        <select id="filterProject"><option value="">All projects</option></select>
+      </div>
+      <button class="ghost" id="refreshBtn">Refresh</button>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Document</th><th>Project</th><th>Category</th>
+            <th>Uploaded</th><th>Chunks</th><th>State</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div id="empty" class="empty" hidden>No documents.</div>
+
+    <div class="foot">
+      <button class="ghost" id="prev">Previous</button>
+      <span id="pageInfo" style="color:var(--muted);font-size:12px"></span>
+      <button class="ghost" id="next">Next</button>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const API = '/api/v1/knowledge-base';
+const PAGE_SIZE = 20;
+let page = 0, totalPages = 1, docs = [];
+
+const $ = id => document.getElementById(id);
+
+function toast(msg, isError) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' err' : '');
+  setTimeout(() => { t.className = ''; }, 3200);
+}
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  const text = await res.text();
+  let body = {};
+  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+  if (!res.ok) throw new Error(body.error || body.raw || ('HTTP ' + res.status));
+  return body;
+}
+
+async function checkStatus() {
+  const el = $('status');
+  try {
+    const s = await api('/status');
+    el.textContent = s.enabled ? 'connected' : 'disabled';
+    el.className = 'pill' + (s.enabled ? '' : ' down');
+  } catch {
+    el.textContent = 'unreachable';
+    el.className = 'pill down';
+  }
+}
+
+function renderProjectOptions() {
+  const names = [...new Set(docs.map(d => d.projectName).filter(Boolean))].sort();
+  const sel = $('filterProject'), current = sel.value;
+  sel.innerHTML = '<option value="">All projects</option>' +
+    names.map(n => `<option${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  $('projects').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+function render() {
+  const filter = $('filterProject').value;
+  const shown = filter ? docs.filter(d => d.projectName === filter) : docs;
+
+  $('rows').innerHTML = shown.map(d => {
+    const f = encodeURIComponent(d.fileName);
+    // Only an explicit false means paused. Documents uploaded before the flag
+    // existed, and any response from a RAG build without it, are active.
+    const on = d.active !== false;
+    return `<tr class="${on ? '' : 'paused'}">
+      <td class="name">${esc(d.fileName)}</td>
+      <td>${d.projectName ? `<span class="tag">${esc(d.projectName)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${d.category ? esc(d.category) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${esc(d.uploadDate || '—')}</td>
+      <td>${d.chunkCount}</td>
+      <td><span class="state ${on ? 'on' : 'off'}">${on ? 'Active' : 'Paused'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="link" data-view="${f}">View</button>
+        <button class="link" data-toggle="${f}" data-active="${on}">${on ? 'Pause' : 'Resume'}</button>
+        <button class="link danger" data-del="${f}" data-name="${esc(d.fileName)}">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('empty').hidden = shown.length > 0;
+  $('pageInfo').textContent = `Page ${page + 1} of ${Math.max(totalPages, 1)}`;
+  $('prev').disabled = page === 0;
+  $('next').disabled = page >= totalPages - 1;
+}
+
+async function load() {
+  try {
+    const r = await api(`/documents?page=${page}&size=${PAGE_SIZE}`);
+    docs = r.documents || [];
+    totalPages = r.totalPages || 1;
+    $('count').textContent = `${r.totalDocuments} document${r.totalDocuments === 1 ? '' : 's'}`;
+    renderProjectOptions();
+    render();
+  } catch (e) {
+    toast('Could not load documents: ' + e.message, true);
+  }
+}
+
+$('uploadBtn').onclick = async () => {
+  const files = $('files').files;
+  if (!files.length) return toast('Choose at least one file', true);
+
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+
+  const project = $('upProject').value.trim();
+  const category = $('upCategory').value.trim();
+  let qs = [];
+  if (project) qs.push('projectName=' + encodeURIComponent(project));
+  if (category) qs.push('category=' + encodeURIComponent(category));
+
+  const btn = $('uploadBtn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const r = await api('/documents/upload' + (qs.length ? '?' + qs.join('&') : ''),
+                        { method: 'POST', body: fd });
+    toast(`${r.processedFiles ?? files.length} uploaded` +
+          (r.failedFiles ? `, ${r.failedFiles} failed` : ''), r.failedFiles > 0);
+    $('files').value = '';
+    page = 0;
+    await load();
+  } catch (e) {
+    toast('Upload failed: ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Upload';
+  }
+};
+
+$('rows').onclick = async (ev) => {
+  const btn = ev.target.closest('button');
+  if (!btn) return;
+
+  if (btn.dataset.view) {
+    window.open(`${API}/documents/download/${btn.dataset.view}`, '_blank');
+    return;
+  }
+
+  if (btn.dataset.toggle) {
+    const makeActive = btn.dataset.active !== 'true';
+    btn.disabled = true;
+    try {
+      await api(`/documents/${btn.dataset.toggle}/active`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: makeActive })
+      });
+      toast(makeActive ? 'Document resumed' : 'Document paused');
+      await load();
+    } catch (e) {
+      toast('Could not update: ' + e.message, true);
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  if (btn.dataset.del) {
+    if (!confirm(`Delete "${btn.dataset.name}"?\n\nThis removes it from the knowledge base permanently. To take it out of search temporarily, use Pause instead.`)) return;
+    btn.disabled = true;
+    try {
+      await api(`/documents/${btn.dataset.del}`, { method: 'DELETE' });
+      toast('Document deleted');
+      await load();
+    } catch (e) {
+      toast('Delete failed: ' + e.message, true);
+      btn.disabled = false;
+    }
+  }
+};
+
+$('filterProject').onchange = render;
+$('refreshBtn').onclick = load;
+$('prev').onclick = () => { if (page > 0) { page--; load(); } };
+$('next').onclick = () => { if (page < totalPages - 1) { page++; load(); } };
+
+checkStatus();
+load();
+</script>
+</body>
+</html>

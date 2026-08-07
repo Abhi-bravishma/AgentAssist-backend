@@ -33,5 +33,17 @@ public class RagDocumentListResponse {
         private String category;
         private String uploadDate;
         private int chunkCount;
+
+        /** Project the document belongs to, e.g. HOSPITALITY, METRO. Null when untagged. */
+        private String projectName;
+
+        /**
+         * False when the document is paused and excluded from retrieval.
+         * <p>
+         * Boxed deliberately: a RAG build without this field must deserialise to null,
+         * not to a primitive default of false, which would render every document as
+         * paused in the portal. Null and true both mean active.
+         */
+        private Boolean active;
     }
 }

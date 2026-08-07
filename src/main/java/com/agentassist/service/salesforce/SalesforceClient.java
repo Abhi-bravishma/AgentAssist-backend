@@ -17,6 +17,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 public class SalesforceClient {
 
     private static final String CLAIMS_ENDPOINT = "/api/v4/claims";
+    private static final String CONTACTS_ENDPOINT = "/api/v4/contacts";
     private static final String CREDIT_CARDS_ENDPOINT = "/api/v4/credit-cards";
     private static final String HOME_LOANS_ENDPOINT = "/api/v4/home-loans";
     private static final String TELCO_CONTACTS_ENDPOINT = "/api/v4/telco-contacts";
@@ -37,6 +38,57 @@ public class SalesforceClient {
      */
     public boolean isEnabled() {
         return salesforceConfig.isEnabled();
+    }
+
+    /**
+     * Fetch the customer's billing position (outstanding balance, minimum due, due date)
+     * from the Salesforce Contact record.
+     * <p>
+     * Only called for BILLING enquiries - no other flow touches this endpoint. Returns
+     * null on any failure so the caller falls back to normal handling.
+     *
+     * @param mobileNumber Customer's mobile number
+     * @return CustomerBillingData, or null if unavailable
+     */
+    public CustomerBillingData getCustomerBillingData(String mobileNumber) {
+        if (!salesforceConfig.isEnabled()) {
+            log.debug("Salesforce integration is disabled");
+            return null;
+        }
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            log.warn("Cannot fetch billing data without a mobile number");
+            return null;
+        }
+
+        log.info("Fetching billing data from Salesforce for mobile: ****{}",
+                mobileNumber.length() > 4 ? mobileNumber.substring(mobileNumber.length() - 4) : "****");
+
+        try {
+            ContactBillingResponse response = salesforceWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(CONTACTS_ENDPOINT)
+                            .queryParam("mobileNumber", mobileNumber)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(ContactBillingResponse.class)
+                    .block();
+
+            CustomerBillingData billingData = CustomerBillingData.fromSalesforceResponse(response);
+            if (billingData != null) {
+                log.info("Salesforce returned billing data for customer: {}, dueStatus: {}",
+                        billingData.getCustomerName(), billingData.dueStatus());
+            } else {
+                log.warn("No billing data found for customer");
+            }
+            return billingData;
+
+        } catch (WebClientResponseException e) {
+            log.error("Salesforce contacts API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to fetch billing data from Salesforce: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

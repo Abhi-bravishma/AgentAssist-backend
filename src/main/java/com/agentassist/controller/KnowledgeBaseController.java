@@ -142,6 +142,48 @@ public class KnowledgeBaseController {
     }
 
     /**
+     * Pause or resume a document without deleting it.
+     */
+    @Operation(
+            summary = "Pause or resume a document",
+            description = "Set whether a document is used for suggestions. A paused document keeps "
+                    + "its embeddings and is excluded from retrieval, so resuming is instant."
+    )
+    @PatchMapping("/documents/{fileName}/active")
+    public ResponseEntity<?> setDocumentActive(
+            @PathVariable String fileName,
+            @RequestBody Map<String, Object> body) {
+
+        Object activeValue = body != null ? body.get("active") : null;
+        if (!(activeValue instanceof Boolean active)) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "`active` (boolean) is required in the request body"));
+        }
+
+        log.info("PATCH /api/v1/knowledge-base/documents/{}/active - active={}", fileName, active);
+
+        if (!ragClient.isEnabled()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Knowledge base integration is not enabled"));
+        }
+
+        try {
+            String decodedFileName = java.net.URLDecoder.decode(fileName, java.nio.charset.StandardCharsets.UTF_8);
+            Map<String, Object> response = ragClient.setDocumentActive(decodedFileName, active);
+
+            if (response.containsKey("error")) {
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to update document status", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "Failed to update document status: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Check if knowledge base integration is enabled.
      */
     @Operation(

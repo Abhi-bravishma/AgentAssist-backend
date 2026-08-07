@@ -215,14 +215,26 @@ public class AnalysisService {
         String latestMessage = latest.getEnglishText() != null
                 ? latest.getEnglishText()
                 : latest.getOriginalText();
+        String originalMessage = latest.getOriginalText();
 
-        // Call RAG API - only pass question, not conversation history or policy context
-        // This prevents RAG from being confused by customer data when answering FAQ questions
-        log.info("Fetching suggestions from RAG for latest message: {}, projectName: {}",
+        // RAG builds its search query from latestMessage plus this list. For a non-English
+        // customer we add their ORIGINAL wording, so retrieval no longer depends solely on
+        // an LLM translation that varies between runs - the knowledge base documents are
+        // bilingual, so the original text matches them directly.
+        // When the original and the English are the same (English customers) we send exactly
+        // what was sent before, so English retrieval is unchanged.
+        boolean bilingualQuery = originalMessage != null
+                && !originalMessage.isBlank()
+                && !originalMessage.equalsIgnoreCase(latestMessage);
+        List<String> searchContext = bilingualQuery
+                ? List.of(originalMessage)
+                : List.of(latestMessage);
+
+        // Still no policy context - that would confuse RAG when answering FAQ questions
+        log.info("Fetching suggestions from RAG for latest message: {}, bilingualQuery: {}, projectName: {}",
                 latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage,
-                projectName != null ? projectName : "ALL");
-        // Only pass latest message as single-item list, no policy context
-        RagSuggestionResponse ragResponse = ragClient.getSuggestions(List.of(latestMessage), latestMessage, 1, null, projectName);
+                bilingualQuery, projectName != null ? projectName : "ALL");
+        RagSuggestionResponse ragResponse = ragClient.getSuggestions(searchContext, latestMessage, 1, null, projectName);
 
         // Handle blocked response
         if (ragResponse.isBlocked()) {

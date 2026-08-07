@@ -15,16 +15,13 @@ import java.time.Instant;
 public class ConversationService {
 
     private final ConversationRepository repo;
+    private final ConversationCreator creator;
 
     public Conversation getOrCreate(String interactionId) {
         return repo.findByInteractionId(interactionId)
                 .orElseGet(() -> {
                     try {
-                        Conversation c = Conversation.builder()
-                                .interactionId(interactionId)
-                                .createdAt(Instant.now())
-                                .build();
-                        return repo.save(c);
+                        return creator.createNew(interactionId);
                     } catch (DataIntegrityViolationException e) {
                         // Race condition: another thread created it first, fetch it
                         log.debug("Concurrent conversation creation, fetching existing: {}", interactionId);

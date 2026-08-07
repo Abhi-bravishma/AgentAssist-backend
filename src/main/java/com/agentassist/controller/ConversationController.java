@@ -26,9 +26,9 @@ public class ConversationController {
     @Operation(summary = "Process a conversation message",
                description = "Analyzes the message, detects sentiment, generates summary and reply suggestions using RAG")
     public ResponseEntity<ConversationResponse> process(@Valid @RequestBody ConversationRequest request) {
-        if(request.getProjectName().isEmpty() || request.getProjectName() == null){
-            System.out.println("Setting default project name to SCB");
-            request.setProjectName("SCB");
+        if(request.getProjectName() == null || request.getProjectName().isEmpty()){
+            System.out.println("Setting default project name to BANK");
+            request.setProjectName("HOSPITALITY");
         }
         return ResponseEntity.ok(
                 processor.processMessage(

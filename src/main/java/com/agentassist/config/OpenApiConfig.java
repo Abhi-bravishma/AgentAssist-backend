@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Configuration;
         ),
         servers = {
                 @Server(url = "http://localhost:8080", description = "Local Development"),
+                @Server(url = "http://74.225.250.214:8085", description = "VM Server"),
                 @Server(url = "https://bravishma-sovereign.eastus.cloudapp.azure.com/agent-assist", description = "Azure Server"),
                 @Server(url = "https://agent-assist.demosaiportal.com", description = "Azure Server"),
                 @Server(url = "https://infobip.lab.bravishma.com/agentassist", description = "Infobip Server")

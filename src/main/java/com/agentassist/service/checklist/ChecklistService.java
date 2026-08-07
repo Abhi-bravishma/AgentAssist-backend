@@ -1,6 +1,7 @@
 package com.agentassist.service.checklist;
 
 import com.agentassist.ai.AiProvider;
+import com.agentassist.dto.salesforce.CustomerBillingData;
 import com.agentassist.dto.salesforce.CustomerCreditCardData;
 import com.agentassist.dto.salesforce.CustomerHomeLoanData;
 import com.agentassist.dto.salesforce.CustomerPolicyData;
@@ -34,6 +35,8 @@ public class ChecklistService {
         POLICY,
         CLAIMS,
         TELCO,
+        /** Statement / payment position / card restriction enquiries. */
+        BILLING,
         NONE
     }
 
@@ -56,11 +59,13 @@ public class ChecklistService {
         return switch (project) {
             case "METRO" -> operation == OperationType.FEE_WAIVER
                     || operation == OperationType.HOME_LOAN_CLOSURE
+                    || operation == OperationType.BILLING
                     || operation == OperationType.NONE;
             case "ALLIANZ" -> operation == OperationType.POLICY
                     || operation == OperationType.CLAIMS
                     || operation == OperationType.NONE;
             case "SCB" -> operation == OperationType.FEE_WAIVER
+                    || operation == OperationType.BILLING
                     || operation == OperationType.NONE;
             case "TELCO" -> operation == OperationType.TELCO
                     || operation == OperationType.NONE;
@@ -79,20 +84,30 @@ public class ChecklistService {
             CustomerHomeLoanData homeLoanData,
             CustomerPolicyData policyData,
             CustomerTelcoData telcoData,
-            OperationType filteredIntent  // Intent that was detected but filtered out due to project mismatch
+            OperationType filteredIntent,  // Intent that was detected but filtered out due to project mismatch
+            CustomerBillingData billingData
     ) {
         // Backward compatible constructor (without telcoData)
         public ChecklistContext(OperationType operationType, String checklistPrompt, String customerDataContext,
                                 CustomerCreditCardData creditCardData, CustomerHomeLoanData homeLoanData,
                                 CustomerPolicyData policyData) {
-            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, null);
+            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, null, null);
         }
 
         // Backward compatible constructor (without telcoData, with filteredIntent)
         public ChecklistContext(OperationType operationType, String checklistPrompt, String customerDataContext,
                                 CustomerCreditCardData creditCardData, CustomerHomeLoanData homeLoanData,
                                 CustomerPolicyData policyData, OperationType filteredIntent) {
-            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, filteredIntent);
+            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData, null, filteredIntent, null);
+        }
+
+        // Backward compatible constructor (without billingData)
+        public ChecklistContext(OperationType operationType, String checklistPrompt, String customerDataContext,
+                                CustomerCreditCardData creditCardData, CustomerHomeLoanData homeLoanData,
+                                CustomerPolicyData policyData, CustomerTelcoData telcoData,
+                                OperationType filteredIntent) {
+            this(operationType, checklistPrompt, customerDataContext, creditCardData, homeLoanData, policyData,
+                    telcoData, filteredIntent, null);
         }
 
         public boolean hasContext() {
@@ -141,6 +156,7 @@ public class ChecklistService {
                 case "POLICY" -> OperationType.POLICY;
                 case "CLAIMS" -> OperationType.CLAIMS;
                 case "TELCO" -> OperationType.TELCO;
+                case "BILLING" -> OperationType.BILLING;
                 default -> OperationType.NONE;
             };
 
@@ -222,6 +238,7 @@ public class ChecklistService {
             case HOME_LOAN_CLOSURE -> buildHomeLoanClosureContext(mobileNumber);
             case POLICY, CLAIMS -> buildPolicyContext(mobileNumber, operationType);
             case TELCO -> buildTelcoContext(mobileNumber);
+            case BILLING -> buildBillingContext(mobileNumber, projectName);
             default -> new ChecklistContext(OperationType.NONE, null, null, null, null, null);
         };
     }
@@ -347,6 +364,43 @@ public class ChecklistService {
     }
 
     /**
+     * Build context for a billing enquiry - what is owed, when it is due, and why a
+     * card is restricted.
+     * <p>
+     * Combines two sources: the Contact record carries the money (outstanding balance,
+     * minimum due, due date), while the credit card records carry the real card status.
+     * The card status is taken from Salesforce rather than inferred from how overdue the
+     * payment is, so the answer matches what the bank's own systems show.
+     */
+    private ChecklistContext buildBillingContext(String mobileNumber, String projectName) {
+        log.info("[Checklist] Building BILLING context for mobile: ****{}",
+                mobileNumber.length() > 4 ? mobileNumber.substring(mobileNumber.length() - 4) : "****");
+
+        CustomerBillingData billingData = salesforceClient.getCustomerBillingData(mobileNumber);
+
+        if (billingData == null) {
+            log.warn("[Checklist] No billing data found for customer");
+            return new ChecklistContext(OperationType.BILLING, getChecklistPrompt(OperationType.BILLING, projectName),
+                    null, null, null, null);
+        }
+
+        log.info("[Checklist] BILLING context built - customer: {}, dueStatus: {}, cardStatus: {}",
+                billingData.getCustomerName(), billingData.dueStatus(), billingData.cardPosition().status());
+
+        return new ChecklistContext(
+                OperationType.BILLING,
+                getChecklistPrompt(OperationType.BILLING, projectName),
+                billingData.toAiContext(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                billingData
+        );
+    }
+
+    /**
      * Get the checklist prompt for the given operation type.
      */
     public String getChecklistPrompt(OperationType operationType) {
@@ -367,14 +421,64 @@ public class ChecklistService {
             }
         }
 
+        // Brand details injected per project so one bank's name/hotline
+        // never leaks into another project's demo
+        String bankName = resolveBankName(projectName);
+        String hotline = resolveHotline(projectName);
+        String loanEmail = resolveLoanEmail(projectName);
+
         // Default checklists
         return switch (operationType) {
-            case FEE_WAIVER -> FEE_WAIVER_CHECKLIST;
-            case HOME_LOAN_CLOSURE -> HOME_LOAN_CLOSURE_CHECKLIST;
+            case FEE_WAIVER -> FEE_WAIVER_CHECKLIST.formatted(bankName.toUpperCase(), bankName, hotline);
+            case HOME_LOAN_CLOSURE -> HOME_LOAN_CLOSURE_CHECKLIST.formatted(bankName.toUpperCase(), loanEmail);
             case POLICY -> POLICY_CHECKLIST;
             case CLAIMS -> CLAIMS_CHECKLIST;
             case TELCO -> TELCO_CHECKLIST;
+            case BILLING -> BILLING_CHECKLIST;
             case NONE -> "";
+        };
+    }
+
+    /**
+     * Bank/brand display name for a project. Add an alias here for a new bank;
+     * any unknown project falls back to a neutral name so no wrong bank is named.
+     */
+    private String resolveBankName(String projectName) {
+        if (projectName == null || projectName.isBlank()) {
+            return "your bank";
+        }
+        return switch (projectName.toUpperCase().trim()) {
+            case "METRO" -> "Metrobank";
+            case "SCB" -> "Standard Chartered";
+            default -> projectName.trim();
+        };
+    }
+
+    /**
+     * Customer service hotline for a project. Unknown projects get a neutral
+     * instruction instead of another bank's real number.
+     */
+    private String resolveHotline(String projectName) {
+        if (projectName == null || projectName.isBlank()) {
+            return "the customer service number printed on the back of the card";
+        }
+        return switch (projectName.toUpperCase().trim()) {
+            case "METRO" -> "(02) 88-700-700";
+            default -> "the customer service number printed on the back of the card";
+        };
+    }
+
+    /**
+     * Home loan servicing email for a project. Unknown projects get a neutral
+     * instruction instead of another bank's real mailbox.
+     */
+    private String resolveLoanEmail(String projectName) {
+        if (projectName == null || projectName.isBlank()) {
+            return "the loan servicing email address on the customer's statement";
+        }
+        return switch (projectName.toUpperCase().trim()) {
+            case "METRO" -> "CLOD-ASFD@metrobank.com.ph";
+            default -> "the loan servicing email address on the customer's statement";
         };
     }
 
@@ -383,7 +487,7 @@ public class ChecklistService {
     // =====================================================
 
     private static final String FEE_WAIVER_CHECKLIST = """
-            === METROBANK CREDIT CARD FEE WAIVER CHECKLIST ===
+            === %s CREDIT CARD FEE WAIVER CHECKLIST ===
 
             YOU ARE HELPING AN AGENT GUIDE A CUSTOMER THROUGH FEE WAIVER. USE THE CUSTOMER DATA BELOW TO GIVE SPECIFIC ADVICE.
 
@@ -391,7 +495,7 @@ public class ChecklistService {
             ------------------------------------------------
             No Annual Fee for Life (NAFFL) Requirements:
             - Spend ₱30,000 within 90 days (for Titanium Mastercard)
-            - Enroll in the Metrobank App
+            - Enroll in the mobile app of %s
             - For Rewards Plus / Cashback Visa: maintain ₱180,000 – ₱250,000 annual spend
 
             Activation Requirement:
@@ -400,7 +504,7 @@ public class ChecklistService {
 
             CHECKLIST FOR EXISTING CARDHOLDERS (Manual Reversal):
             -----------------------------------------------------
-            Call: (02) 88-700-700
+            Call: %s
 
             Options for Fee Waiver:
             1. Spend required amount (e.g., ₱20,000 within 30 days)
@@ -417,13 +521,13 @@ public class ChecklistService {
             """;
 
     private static final String HOME_LOAN_CLOSURE_CHECKLIST = """
-            === METROBANK HOME LOAN CLOSURE & FORECLOSURE CHECKLIST ===
+            === %s HOME LOAN CLOSURE & FORECLOSURE CHECKLIST ===
 
             YOU ARE HELPING AN AGENT GUIDE A CUSTOMER THROUGH HOME LOAN CLOSURE. USE THE CUSTOMER DATA BELOW TO GIVE SPECIFIC ADVICE.
 
             LOAN PAYOFF (REDEMPTION) STEPS:
             --------------------------------
-            1. Email: CLOD-ASFD@metrobank.com.ph
+            1. Email: %s
             2. Request Statement of Account (SOA)
             3. Provide: Customer name, Loan account number, Target payment date
 
@@ -445,6 +549,75 @@ public class ChecklistService {
             4. Check legal status - warn if not "Clear"
             5. Provide the exact steps with customer's actual loan account number
             6. Calculate estimated total payoff (Outstanding + Penalty)
+            """;
+
+    private static final String BILLING_CHECKLIST = """
+            === CARD BILLING & PAYMENT STATUS ===
+
+            YOU ARE HELPING AN AGENT ANSWER A BILLING QUESTION USING THE CUSTOMER DATA BELOW.
+
+            The customer may ask this in any wording and any language. Answer the part they
+            actually asked - do not dump every field.
+
+            ============================================================
+            CRITICAL RULES
+            ============================================================
+            - Use ONLY the customer data below. Never invent an amount, a date, a fee,
+              a phone number or a policy.
+            - The PAYMENT STATUS line has already been worked out for you. State it.
+              Do NOT recalculate whether the customer is overdue or count days yourself.
+            - Card numbers and account numbers are already masked. Quote them exactly as
+              shown - never fill in the hidden digits.
+            - The record does NOT say which currency the amounts are in. Write amounts
+              exactly as given, with no currency symbol, unless a currency appears in the
+              data itself.
+            - If the customer asks for something not in the data, say plainly that you do
+              not have it and offer to check - do not substitute a different figure.
+            - Talk TO the customer ("your balance is..."), never about them.
+
+            ============================================================
+            WHAT TO ANSWER
+            ============================================================
+
+            The balance is held at ACCOUNT level, not split per card, and there is no list of
+            individual cards in this data. Never name a specific card, card type or last 4
+            digits unless it appears in the data below.
+
+            BILLING / STATEMENT SUMMARY
+            ("summarise my billing", "what's my bill", "account summary")
+            - Outstanding balance, minimum due, due date
+            - The payment status conclusion and the card status conclusion
+            - If asked about "my cards" specifically, say the balance is held at account
+              level rather than split between cards
+            - Keep it to the headline numbers, not every field
+
+            WHAT DO I OWE / WHEN IS IT DUE
+            ("how much do I owe", "outstanding amount", "when do I pay", "am I late")
+            - Outstanding balance and the due date
+            - Minimum due if the customer needs a smaller immediate payment
+            - The payment status conclusion, including how many days overdue when it applies
+            - If the status says NOTHING DUE, say the account is settled - do not quote an
+              old due date as if a payment is owed
+
+            WHY IS MY CARD BLOCKED / NOT WORKING
+            ("card declined", "can't use my card", "why is it blocked")
+            - Use the CARD STATUS conclusion below - it is already decided
+            - If BLOCKED: give the reason exactly as written there, including the overdue
+              days and the amount that must be cleared
+            - If AT_RISK: say the card is still active, state how many days overdue it is,
+              and warn what happens if the balance is not cleared
+            - If ACTIVE: say the card is not blocked and ask what happened when they tried
+              to use it - never claim a card is blocked when the status says active
+
+            CAN IT BE UNBLOCKED / HOW DO I FIX IT
+            - State the outstanding amount that has to be cleared
+            - Explain that clearing it lifts the restriction and the card is reinstated
+            - Offer to raise the request for them
+            - Do NOT promise a timeframe, a fee reversal or an outcome that is not in the data
+
+            ============================================================
+            CUSTOMER DATA BELOW
+            ============================================================
             """;
 
     private static final String POLICY_CHECKLIST = """

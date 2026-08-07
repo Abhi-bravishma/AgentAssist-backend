@@ -329,6 +329,54 @@ public class RagClient {
     }
 
     /**
+     * Pause or resume a document in the RAG knowledge base.
+     * <p>
+     * A paused document keeps its embeddings and is simply excluded from retrieval,
+     * so resuming takes effect immediately with no re-upload.
+     *
+     * @param fileName File name to update
+     * @param active   true to make it searchable, false to pause it
+     * @return Response from the RAG API
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> setDocumentActive(String fileName, boolean active) {
+        if (!ragClientConfig.isEnabled()) {
+            log.debug("RAG integration is disabled");
+            return Map.of("error", "RAG integration is disabled");
+        }
+
+        log.info("Setting RAG document '{}' active={} for companyId: {}",
+                fileName, active, ragClientConfig.getCompanyId());
+
+        try {
+            String encodedFileName = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8);
+            String uri = DOCUMENTS_ENDPOINT + "/" + encodedFileName + "/active"
+                    + "?companyId=" + ragClientConfig.getCompanyId();
+
+            Map<String, Object> response = ragWebClient.patch()
+                    .uri(uri)
+                    .bodyValue(Map.of("active", active))
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            if (response != null) {
+                log.info("RAG active-toggle response: {}", response);
+                return response;
+            }
+
+            return Map.of("error", "No response from RAG API");
+
+        } catch (WebClientResponseException e) {
+            log.error("RAG active-toggle error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return Map.of("error", e.getMessage(), "status", e.getStatusCode().value());
+        } catch (Exception e) {
+            log.error("Failed to update RAG document status: {}", e.getMessage(), e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
      * Delete a document from the RAG knowledge base.
      *
      * @param fileName File name to delete

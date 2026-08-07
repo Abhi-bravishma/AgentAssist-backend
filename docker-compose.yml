@@ -12,11 +12,15 @@ services:
       SERVER_PORT: "8085"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       AI_PROVIDER: openai
-      RAG_BASE_URL: http://135.222.41.146:8080
+      RAG_BASE_URL: http://74.225.250.214:8080
       RAG_ENABLED: "true"
       RAG_API_KEY: agent-assist-secret-key-change-in-production
       SALESFORCE_exiBASE_URL: https://salesforce.lab.bravishma.com
       SALESFORCE_ENABLED: "true"
+      AVAYA_BASE_URL: https://core.showmeavayacom.ec.avayacloud.com
+      AVAYA_CLIENT_ID: transcript-api-01-001d010908da20232d07611320
+      AVAYA_CLIENT_SECRET: ${AVAYA_CLIENT_SECRET}
+      AVAYA_TIMEOUT: "30000"
     volumes:
       - ./agent-assist-files:/app/agent-assist-files
     restart: unless-stopped

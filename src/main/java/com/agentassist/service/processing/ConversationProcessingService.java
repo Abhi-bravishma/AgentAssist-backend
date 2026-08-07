@@ -30,6 +30,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ConversationProcessingService {
 
+    /**
+     * Shown when the knowledge base matched nothing and there is no customer data to
+     * answer from. Deliberately states the limit instead of letting the model guess.
+     */
+    private static final String NO_KNOWLEDGE_REPLY =
+            "I don't have that information in our knowledge base right now. "
+            + "Let me check with the team and come back to you shortly.";
+
     private final ConversationService conversationService;
     private final MessageService messageService;
     private final TranslationService translationService;
@@ -209,36 +217,40 @@ public class ConversationProcessingService {
             knowledgeSources = Collections.emptyList();
         } else if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
             // CUSTOMER-SPECIFIC QUERY (POLICY/CLAIMS/FEE_WAIVER/HOME_LOAN_CLOSURE with Salesforce data)
-            // ALWAYS use checklist suggestions (GPT's answer with Salesforce data)
-            // RAG is only used for supplementary knowledge sources, NOT for suggestions
-            log.info("[Process] Customer-specific query for: {}, using CHECKLIST suggestions (Salesforce data)",
-                    checklistContext.operationType());
-
-            boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
+            // KNOWLEDGE BASE FIRST: when the FAQ has a document matching this question,
+            // answer from the document. The checklist answer (GPT + Salesforce data) is the
+            // fallback for when the knowledge base has nothing relevant.
             boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
 
-            // ALWAYS use checklist suggestions - GPT has the correct answer with customer data
-            suggestions = bundle.getSuggestions().stream()
-                    .map(s -> {
-                        SuggestedResponse sr = new SuggestedResponse();
-                        sr.setEnglishReply(s);
-                        if (!isEnglishUser) {
-                            sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                        }
-                        return sr;
-                    }).toList();
+            // A billing question can only be answered from the customer's own record - no
+            // FAQ document knows their balance - so the knowledge base never overrides it.
+            // Documents are still fetched for the knowledge-source chips.
+            boolean customerDataOnly = checklistContext.operationType() == OperationType.BILLING;
 
-            // Fetch RAG documents as SUPPLEMENTARY knowledge sources only (not for suggestions)
+            // Checklist answer - built up front so it is ready as the fallback
+            List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
+
             if (analysisService.isRagEnabled() && !isSimpleMessage) {
                 var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
                 documentsFound = ragResult.documentsFound();
                 knowledgeSources = ragResult.knowledgeSources();
                 usedKnowledgeBase = ragResult.usedKnowledgeBase();
-                log.info("[Process] RAG found {} supplementary documents", documentsFound);
+
+                if (!customerDataOnly && documentsFound > 0 && !ragResult.suggestions().isEmpty()) {
+                    suggestions = ragResult.suggestions();
+                    log.info("[Process] Using KNOWLEDGE BASE suggestion for {} ({} documents matched)",
+                            checklistContext.operationType(), documentsFound);
+                } else {
+                    suggestions = checklistSuggestions;
+                    log.info("[Process] Knowledge base found nothing for {}, using CHECKLIST suggestion",
+                            checklistContext.operationType());
+                }
             } else {
+                suggestions = checklistSuggestions;
                 knowledgeSources = Collections.emptyList();
+                log.info("[Process] Using CHECKLIST suggestion for {} (knowledge base skipped)",
+                        checklistContext.operationType());
             }
-            log.info("[Process] Generated {} suggestions from checklist", suggestions.size());
         } else {
             // GENERAL QUERY - Always use RAG for knowledge base lookup
             // Even if we have cached Salesforce data, RAG should be called for general questions
@@ -256,51 +268,30 @@ public class ConversationProcessingService {
                 log.info("[Process] RAG returned {} suggestions, {} knowledge sources",
                         suggestions.size(), knowledgeSources.size());
 
-                // If RAG found no documents but we have checklist context, use AI suggestions with that context
-                // This ensures customer-specific questions get answered with actual customer data
-                if (documentsFound == 0 && checklistContext != null && checklistContext.hasContext() && !bundle.getSuggestions().isEmpty()) {
-                    log.info("[Process] No RAG documents found but have checklist context, using AI suggestions instead");
-                    boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
-                    suggestions = bundle.getSuggestions().stream()
-                            .map(s -> {
-                                SuggestedResponse sr = new SuggestedResponse();
-                                sr.setEnglishReply(s);
-                                if (!isEnglishUser) {
-                                    sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                                }
-                                return sr;
-                            }).toList();
+                // Knowledge base found nothing usable. Only fall back to the AI answer when
+                // there is real customer data behind it - otherwise the model has nothing to
+                // ground on and will invent figures (it quoted a 10% discount for a document
+                // that says 25%). An honest "I don't know" beats a confident wrong number.
+                if (documentsFound == 0 || suggestions.isEmpty()) {
+                    boolean hasCustomerData = checklistContext != null && checklistContext.hasContext();
+                    if (hasCustomerData && !bundle.getSuggestions().isEmpty()) {
+                        log.info("[Process] Knowledge base found nothing, using AI suggestions grounded in customer data");
+                        suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
+                    } else {
+                        log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
+                        suggestions = toSuggestedResponses(List.of(NO_KNOWLEDGE_REPLY), detectedLang);
+                    }
                 }
             } else if (isSimpleMessage) {
                 // Skip RAG for greetings - use AI suggestions directly
                 log.info("[Process] Simple message detected, skipping RAG...");
-                boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
-
-                suggestions = bundle.getSuggestions().stream()
-                        .map(s -> {
-                            SuggestedResponse sr = new SuggestedResponse();
-                            sr.setEnglishReply(s);
-                            if (!isEnglishUser) {
-                                sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                            }
-                            return sr;
-                        }).toList();
+                suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
                 knowledgeSources = Collections.emptyList();
                 log.info("[Process] Generated {} suggestions (skipped RAG for simple message)", suggestions.size());
             } else {
                 // Fallback to AI-based suggestions without RAG
                 log.info("[Process] RAG disabled, using AI for suggestions...");
-                boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
-
-                suggestions = bundle.getSuggestions().stream()
-                        .map(s -> {
-                            SuggestedResponse sr = new SuggestedResponse();
-                            sr.setEnglishReply(s);
-                            if (!isEnglishUser) {
-                                sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
-                            }
-                            return sr;
-                        }).toList();
+                suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
                 knowledgeSources = Collections.emptyList();
                 log.info("[Process] Generated {} suggestions (no RAG)", suggestions.size());
             }
@@ -320,6 +311,8 @@ public class ConversationProcessingService {
             customerName = checklistContext.homeLoanData().getCustomerName();
         } else if (checklistContext != null && checklistContext.policyData() != null) {
             customerName = checklistContext.policyData().getCustomerName();
+        } else if (checklistContext != null && checklistContext.billingData() != null) {
+            customerName = checklistContext.billingData().getCustomerName();
         } else if (effectivePolicyData != null) {
             customerName = effectivePolicyData.getCustomerName();
         }
@@ -365,6 +358,26 @@ public class ConversationProcessingService {
     }
 
     /**
+     * Wrap English suggestions as SuggestedResponse, translating into the customer's
+     * language when it is not English.
+     */
+    private List<SuggestedResponse> toSuggestedResponses(List<String> englishSuggestions, String detectedLang) {
+        if (englishSuggestions == null || englishSuggestions.isEmpty()) {
+            return Collections.emptyList();
+        }
+        boolean isEnglishUser = detectedLang.equalsIgnoreCase("en");
+        return englishSuggestions.stream()
+                .map(s -> {
+                    SuggestedResponse sr = new SuggestedResponse();
+                    sr.setEnglishReply(s);
+                    if (!isEnglishUser) {
+                        sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                    }
+                    return sr;
+                }).toList();
+    }
+
+    /**
      * Get a helpful message when an intent is filtered out due to project mismatch.
      */
     private String getFilteredIntentMessage(OperationType filteredIntent, String projectName) {
@@ -383,6 +396,9 @@ public class ConversationProcessingService {
             case HOME_LOAN_CLOSURE -> "I'm sorry, but home loan closure services are not available through " + projectDisplay + ". " +
                     "This service handles insurance-related inquiries like policy details and claims. " +
                     "For banking inquiries, please contact your bank directly.";
+            case BILLING -> "I'm sorry, but card billing and payment information is not available through " + projectDisplay + ". " +
+                    "For questions about your statement, outstanding balance or card status, " +
+                    "please contact your bank directly.";
             default -> "I'm sorry, but I cannot help with that request through " + projectDisplay + ". " +
                     "Please contact the appropriate service provider for assistance.";
         };

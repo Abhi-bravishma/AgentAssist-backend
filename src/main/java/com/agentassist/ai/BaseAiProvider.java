@@ -306,9 +306,22 @@ public abstract class BaseAiProvider implements AiProvider {
         long startTime = System.currentTimeMillis();
 
         try {
+            // This translation becomes the knowledge base search query, so a mangled
+            // proper noun does not just read badly - it lowers the embedding score and
+            // pulls the wrong document into the results.
             String prompt = """
                 Translate to English.
                 Output ONLY the translated text.
+
+                RULES:
+                - Proper nouns must survive translation: restaurant, hotel, venue, brand,
+                  product, card and programme names.
+                - If the proper noun has a well-known official English name, use that name.
+                - If you are not certain of the official English name, keep the original
+                  characters unchanged. NEVER translate a name character by character and
+                  never invent an English-sounding name for it.
+                - Keep numbers, times, dates, currency amounts and phone numbers unchanged.
+
                 Text: %s
                 """.formatted(text);
 
@@ -337,8 +350,18 @@ public abstract class BaseAiProvider implements AiProvider {
             String prompt = """
                 Translate strictly to %s.
                 Output ONLY the translated text.
+
+                RULES:
+                - Proper nouns must survive translation: restaurant, hotel, venue, brand,
+                  product, card and programme names.
+                - If the proper noun has a well-known official name in the target language,
+                  use that name. Otherwise leave it exactly as written in the source.
+                  NEVER translate a name word by word and never invent a local name for it.
+                - Keep numbers, times, dates, currency amounts and phone numbers unchanged.
+                - Translate everything else naturally.
+
                 Text: %s
-                """.formatted(targetLang, english);
+                """.formatted(describeLanguage(targetLang), english);
 
             String out = call(prompt);
             String result = (out == null || out.isBlank()) ? english : out.trim();
@@ -372,17 +395,117 @@ public abstract class BaseAiProvider implements AiProvider {
                 log.warn("[AI:{}] detectLanguage returned null, defaulting to 'und'", providerName);
                 return "und";
             }
-            lang = lang.trim().toLowerCase();
-            String result = lang.length() == 2 ? lang : "und";
+            String result = normalizeLanguageTag(lang, text);
 
             long duration = System.currentTimeMillis() - startTime;
-            log.info("[AI:{}] detectLanguage completed in {}ms, detected: {}", providerName, duration, result);
+            log.info("[AI:{}] detectLanguage completed in {}ms, raw: '{}', detected: {}",
+                    providerName, duration, lang.trim(), result);
             return result;
 
         } catch (Exception e) {
             log.error("[AI:{}] detectLanguage failed: {} - {}", providerName, e.getClass().getSimpleName(), e.getMessage());
             return "und";
         }
+    }
+
+    // Characters that exist in only one Chinese script. Used to decide Traditional vs
+    // Simplified from the customer's own text, which is deterministic - unlike asking
+    // the model, which answers "zh", "zh-TW" or "zh-Hant" for the same input.
+    private static final String TRADITIONAL_ONLY =
+            "繁體灣東車買觀們個來應這時說對開關費務點電話廣鐵頭問題實現當經濟權證單價營業機構樣兒學國讀寫語譯聽見產屬醫藥銀錢長門雞魚鳥馬龍鳳從將軍隊島龜"
+            + "軒裝麼樓處號間過還發為與動樂兩邊廳選進預訂麗舊歡團導會"
+            // Traditional-only, deliberately with no Simplified counterpart below:
+            // 着 and 几 are both valid in Traditional writing, so counting them as
+            // Simplified evidence would misread Hong Kong / Macau text.
+            + "著幾";
+    private static final String SIMPLIFIED_ONLY =
+            "简体湾东车买观们个来应这时说对开关费务点电话广铁头问题实现当经济权证单价营业机构样儿学国读写语译听见产属医药银钱长门鸡鱼鸟马龙凤从将军队岛龟"
+            + "轩装么楼处号间过还发为与动乐两边厅选进预订丽旧欢团导会";
+
+    /**
+     * Normalize whatever the model returns into a usable language tag.
+     * <p>
+     * Models answer "zh-TW", "zh-Hant" or "Chinese (Traditional)" for Traditional Chinese.
+     * The previous {@code length() == 2} check turned every one of those into "und", and
+     * LanguageService skips translation entirely for "und" - so the agent was handed raw
+     * English where Chinese was expected. For Chinese the script is decided from the
+     * customer's own characters; the model's region tag is only a fallback.
+     */
+    private String normalizeLanguageTag(String raw, String sourceText) {
+        String tag = raw.trim().toLowerCase().replaceAll("[^a-z-]", "");
+        String primary = tag.isEmpty() ? "" : tag.split("-")[0];
+        boolean tagUnusable = primary.length() != 2;
+
+        // Han characters alone do NOT mean Chinese - Japanese kanji live in the same
+        // Unicode block, and an English message can quote a Chinese venue name. So the
+        // text is only consulted when the model's own answer is unusable.
+        boolean modelSaysChinese = tag.startsWith("zh") || tag.contains("chinese");
+        if (modelSaysChinese || (tagUnusable && hasHanCharacters(sourceText))) {
+            String scriptFromText = detectChineseScript(sourceText);
+            if (scriptFromText != null) {
+                return scriptFromText;
+            }
+            if (tag.contains("hant") || tag.contains("traditional")
+                    || tag.contains("tw") || tag.contains("hk") || tag.contains("mo")) {
+                return "zh-Hant";
+            }
+            if (tag.contains("hans") || tag.contains("simplified")
+                    || tag.contains("cn") || tag.contains("sg")) {
+                return "zh-Hans";
+            }
+            return "zh";
+        }
+
+        // Primary subtag only, e.g. "pt-br" -> "pt"
+        return tagUnusable ? "und" : primary;
+    }
+
+    private static boolean hasHanCharacters(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return text.codePoints().anyMatch(cp -> (cp >= 0x4E00 && cp <= 0x9FFF)
+                || (cp >= 0x3400 && cp <= 0x4DBF));
+    }
+
+    /**
+     * Decide Traditional vs Simplified by counting script-exclusive characters.
+     * Returns null when the text has no distinguishing characters.
+     */
+    private static String detectChineseScript(String text) {
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+        int traditional = 0;
+        int simplified = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (TRADITIONAL_ONLY.indexOf(c) >= 0) {
+                traditional++;
+            } else if (SIMPLIFIED_ONLY.indexOf(c) >= 0) {
+                simplified++;
+            }
+        }
+        if (traditional == 0 && simplified == 0) {
+            return null;
+        }
+        return traditional >= simplified ? "zh-Hant" : "zh-Hans";
+    }
+
+    /**
+     * Human-readable target for the translation prompt. A bare tag like "zh-Hant" is
+     * ambiguous to the model; naming the script explicitly is not.
+     */
+    private String describeLanguage(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return "English";
+        }
+        return switch (tag.toLowerCase()) {
+            case "zh-hant" -> "Traditional Chinese (繁體中文), using Traditional characters only";
+            case "zh-hans" -> "Simplified Chinese (简体中文), using Simplified characters only";
+            case "zh" -> "Chinese";
+            default -> tag;
+        };
     }
 
     @Override
@@ -869,6 +992,7 @@ public abstract class BaseAiProvider implements AiProvider {
                 POLICY
                 CLAIMS
                 TELCO
+                BILLING
                 GENERAL
 
                 STRICT CLASSIFICATION RULES:
@@ -927,6 +1051,31 @@ public abstract class BaseAiProvider implements AiProvider {
                 - "Student plan" / "Mahasiswa"
                 - KEY: Anything related to mobile/telecom plans, data, or services
 
+                Return "BILLING" when the customer asks about their PAYMENT POSITION or a
+                CARD RESTRICTION - in any wording, in any language. Judge by what the
+                customer needs to know, not by matching these words:
+                - What they owe: "how much do I owe", "outstanding amount", "my balance",
+                  "what's my bill", "minimum due", "statement balance"
+                - When to pay: "when is my payment due", "due date", "am I late",
+                  "am I overdue", "did my payment go through"
+                - A billing summary: "summarise my billing", "billing for my cards",
+                  "give me a summary of my account"
+                - A restricted card: "why is my card blocked", "card declined",
+                  "my card isn't working", "why can't I use my card"
+                - Restoring a card: "can my card be unblocked", "how do I unblock it",
+                  "what do I need to do to use my card again"
+                - Same meanings in other languages, e.g. "我還欠多少錢", "什麼時候到期",
+                  "我的卡為什麼被封鎖", "berapa tagihan saya"
+                - KEY: the answer would come from their STATEMENT or CARD STATUS
+
+                BILLING BOUNDARIES - these are NOT billing:
+                - Annual fee, late fee, waiving a fee, NAFFL, card rewards or benefits,
+                  fee eligibility → FEE_WAIVER
+                - Home loan balance, loan payoff, foreclosure, prepayment penalty
+                  → HOME_LOAN_CLOSURE
+                - Insurance policies or claims → POLICY or CLAIMS
+                - Mobile data, quota, recharge, mobile plans → TELCO
+
                 Return "GENERAL" for process/how-to/FAQ questions:
                 - "How do I renew my policy?" → GENERAL (process question)
                 - "How do I file a claim?" → GENERAL (process question)
@@ -943,7 +1092,17 @@ public abstract class BaseAiProvider implements AiProvider {
                 | "I want to close my home loan" | HOME_LOAN_CLOSURE |
                 | "How many home loans do I have?" | HOME_LOAN_CLOSURE |
                 | "What is my home loan balance?" | HOME_LOAN_CLOSURE |
+                | "What is my outstanding loan amount?" | HOME_LOAN_CLOSURE |
                 | "What is my prepayment penalty?" | HOME_LOAN_CLOSURE |
+                | "How much do I owe on my card?" | BILLING |
+                | "What is my outstanding amount and due date?" | BILLING |
+                | "Summarise the billing for my cards" | BILLING |
+                | "Why is my card blocked?" | BILLING |
+                | "Can my card be unblocked?" | BILLING |
+                | "When is my payment due?" | BILLING |
+                | "What do I need to do to use my card again?" | BILLING |
+                | "How do I get my card working again?" | BILLING |
+                | "My card is not working, why?" | BILLING |
                 | "How many policies do I have?" | POLICY |
                 | "What is my claim status?" | CLAIMS |
                 | "I need more data" | TELCO |
@@ -955,6 +1114,10 @@ public abstract class BaseAiProvider implements AiProvider {
 
                 RULE: If question asks about MY/YOUR personal data (cards, loans, policies, claims, mobile plans) → use appropriate category
                 RULE: If question asks HOW TO DO something or WHAT IS something → GENERAL
+                RULE (OVERRIDES THE ABOVE): a "how do I" or "what do I need to do" question about
+                THEIR OWN card, payment or account is NOT general. "What do I need to do to use my
+                card again" is about their blocked card → BILLING. Only route to GENERAL when the
+                question is about a process in the abstract, with no reference to their own account.
 
                 LATEST MESSAGE: "%s"
 
@@ -973,7 +1136,8 @@ public abstract class BaseAiProvider implements AiProvider {
             // Validate it's one of the expected values
             if (!result.equals("FEE_WAIVER") && !result.equals("HOME_LOAN_CLOSURE")
                     && !result.equals("POLICY") && !result.equals("CLAIMS")
-                    && !result.equals("TELCO") && !result.equals("GENERAL")) {
+                    && !result.equals("TELCO") && !result.equals("BILLING")
+                    && !result.equals("GENERAL")) {
                 log.warn("[AI:{}] detectOperationType returned invalid value '{}', defaulting to GENERAL", providerName, result);
                 return "GENERAL";
             }

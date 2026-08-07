@@ -90,7 +90,25 @@
       "Bash(done)",
       "Bash(git commit:*)",
       "Bash(git push)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Read(//d/Bravishma/Agent Assist/src/main/java/com/agentassist/security/**)",
+      "Read(//d/Bravishma/Bravisham-soverign-projects/knowledgeiq/bravishma-rag/**)",
+      "PowerShell(git *)",
+      "PowerShell(curl.exe -s -w \"`nHTTP_STATUS:%{http_code}\" --connect-timeout 15 -X POST \"http://74.225.250.214:8085/api/v1/agent-assistant/process\" -H \"Content-Type: application/json\" -d '{\\\\\"interactionId\\\\\":\\\\\"claude-test-hosp-01\\\\\",\\\\\"from\\\\\":\\\\\"customer\\\\\",\\\\\"message\\\\\":\\\\\"What are the signature dishes at Golden Court?\\\\\",\\\\\"projectName\\\\\":\\\\\"HOSPITALITY\\\\\"}')",
+      "PowerShell(curl.exe -s --connect-timeout 10 -X POST \"http://74.225.250.214:6333/collections/agent_assist/points/scroll\" -H \"Content-Type: application/json\" -d '{\\\\\"limit\\\\\":2,\\\\\"with_payload\\\\\":true,\\\\\"with_vector\\\\\":false,\\\\\"filter\\\\\":{\\\\\"must\\\\\":[{\\\\\"key\\\\\":\\\\\"projectName\\\\\",\\\\\"match\\\\\":{\\\\\"keyword\\\\\":\\\\\"HOSPITALITY\\\\\"}},{\\\\\"key\\\\\":\\\\\"useCase\\\\\",\\\\\"match\\\\\":{\\\\\"keyword\\\\\":\\\\\"agent_assist\\\\\"}},{\\\\\"key\\\\\":\\\\\"companyId\\\\\",\\\\\"match\\\\\":{\\\\\"keyword\\\\\":\\\\\"1\\\\\"}}]}}')",
+      "PowerShell(curl.exe -s --connect-timeout 10 -X POST \"http://74.225.250.214:6333/collections/agent_assist/points/scroll\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\qdrant-scroll.json\")",
+      "PowerShell(curl.exe -s --connect-timeout 10 \"http://74.225.250.214:6333/collections\")",
+      "PowerShell(foreach \\($c in @\\(\"pdf_docs_openai_1536\",\"pdf_docs_openai_1536_v2\",\"pdf_docs_openai_embedding\",\"pdf_docs_openai_embedding_v2\",\"pdf_docs_new_mxbai-embed-large\",\"documents\",\"hotel_knowledge_base\"\\)\\) { $r = curl.exe -s --connect-timeout 10 -X POST \"http://74.225.250.214:6333/collections/$c/points/scroll\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\qdrant-hosp.json\"; Write-Output \"=== $c ===\"; Write-Output $r })",
+      "PowerShell(curl.exe -s -X POST \"http://74.225.250.214:6333/collections/pdf_docs_openai_1536/points/scroll\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\qdrant-scroll.json\")",
+      "PowerShell(curl.exe -s \"http://74.225.250.214:6333/collections/pdf_docs_openai_1536\" | ConvertFrom-Json | ForEach-Object { $_.result | Select-Object points_count, indexed_vectors_count, status } | ConvertTo-Json)",
+      "PowerShell(curl.exe -s -X POST \"http://74.225.250.214:6333/collections/pdf_docs_openai_1536/points/query\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\qdrant-query.json\")",
+      "PowerShell(curl.exe -s --connect-timeout 10 -X POST \"http://135.222.41.146:6333/collections/pdf_docs_openai_1536/points/scroll\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\qdrant-hosp.json\")",
+      "PowerShell(curl.exe -s -w \"`nHTTP_STATUS:%{http_code}\" --connect-timeout 15 -X POST \"http://74.225.250.214:8080/api/v1/agent-assist/suggestions\" -H \"Content-Type: application/json\" -H \"X-API-Key: agent-assist-secret-key-change-in-production\" -H \"Authorization: Bearer agent-assist-secret-key-change-in-production\" -d \"@C:\\\\tempp\\\\rag-req.json\")",
+      "PowerShell(curl.exe -s -w \"`nHTTP_STATUS:%{http_code}\" --connect-timeout 15 -X POST \"http://135.222.41.146:8080/api/v1/agent-assist/suggestions\" -H \"Content-Type: application/json\" -H \"X-API-Key: agent-assist-secret-key-change-in-production\" -H \"Authorization: Bearer agent-assist-secret-key-change-in-production\" -d \"@C:\\\\tempp\\\\rag-req.json\")",
+      "PowerShell(curl.exe -s --connect-timeout 15 -X POST \"http://74.225.250.214:8080/api/v1/agent-assist/suggestions\" -H \"Content-Type: application/json\" -H \"X-API-Key: agent-assist-secret-key-change-in-production\" -H \"Authorization: Bearer agent-assist-secret-key-change-in-production\" -d \"@C:\\\\tempp\\\\rag-req2.json\")",
+      "PowerShell(curl.exe -s -w \"`nHTTP_STATUS:%{http_code}\" --connect-timeout 15 -X POST \"http://74.225.250.214:8085/api/v1/agent-assistant/process\" -H \"Content-Type: application/json\" -d \"@C:\\\\tempp\\\\process-req2.json\")",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File C:\\\\tempp\\\\test-rag.ps1)",
+      "PowerShell(foreach \\($f in @\\(\"zh1\",\"zh2\",\"zh3\"\\)\\) { $r = curl.exe -s --connect-timeout 15 -X POST \"http://74.225.250.214:8085/api/v1/agent-assistant/process\" -H \"Content-Type: application/json; charset=utf-8\" --data-binary \"@C:\\\\tempp\\\\$f.json\"; $j = $r | ConvertFrom-Json; Write-Output \\(\"=== {0} === docs={1} usedKB={2}\" -f $f, $j.documentsFound, $j.usedKnowledgeBase\\); if \\($j.suggestedResponses\\) { Write-Output \\(\"EN: \" + $j.suggestedResponses[0].englishReply\\); Write-Output \\(\"ZH: \" + $j.suggestedResponses[0].userLanguageReply\\) } })"
     ]
   }
 }
