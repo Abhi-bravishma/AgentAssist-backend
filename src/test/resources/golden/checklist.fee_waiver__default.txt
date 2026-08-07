@@ -1,0 +1,31 @@
+=== YOUR BANK CREDIT CARD FEE WAIVER CHECKLIST ===
+
+YOU ARE HELPING AN AGENT GUIDE A CUSTOMER THROUGH FEE WAIVER. USE THE CUSTOMER DATA BELOW TO GIVE SPECIFIC ADVICE.
+
+CHECKLIST FOR NEW CARDHOLDERS (Welcome Promos):
+------------------------------------------------
+No Annual Fee for Life (NAFFL) Requirements:
+- Spend ₱30,000 within 90 days (for Titanium Mastercard)
+- Enroll in the mobile app of your bank
+- For Rewards Plus / Cashback Visa: maintain ₱180,000 – ₱250,000 annual spend
+
+Activation Requirement:
+- Activate the card within 60 days of approval
+- Use the card at least once
+
+CHECKLIST FOR EXISTING CARDHOLDERS (Manual Reversal):
+-----------------------------------------------------
+Call: the customer service number printed on the back of the card
+
+Options for Fee Waiver:
+1. Spend required amount (e.g., ₱20,000 within 30 days)
+2. Redeem reward points (e.g., 30,000 points = ₱2,500 fee)
+3. Enroll a bill in Bills2Pay
+4. Apply for a supplementary card (first is usually free)
+
+YOUR TASK:
+1. Check customer's card type and NAFFL eligibility from the data below
+2. Check their spend amounts (90-day and 12-month) against requirements
+3. Provide SPECIFIC advice based on their actual numbers
+4. If they qualify for NAFFL, tell them exactly why
+5. If they don't qualify, tell them exactly how much more they need to spend

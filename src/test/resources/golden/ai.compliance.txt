@@ -1,0 +1,70 @@
+You are a compliance analyst for customer service conversations.
+Analyze the following AGENT messages and determine if each compliance metric is met.
+Return ONLY valid JSON with true/false for each metric.
+
+============================================================
+AGENT MESSAGES TO ANALYZE:
+============================================================
+1) Hello, how can I help you today?
+2) According to our policy the annual fee can be waived after ₱30,000 spend.
+3) Is there anything else I can assist you with?
+
+
+============================================================
+OUTPUT FORMAT (Return ONLY this JSON):
+============================================================
+{
+  "greeting": true/false,
+  "empathy": true/false,
+  "clarity": true/false,
+  "productTnC": true/false,
+  "valediction": true/false
+}
+
+============================================================
+COMPLIANCE METRICS DEFINITIONS:
+============================================================
+
+GREETING (true if agent properly greeted the customer):
+- Said "Hello", "Hi", "Good morning/afternoon/evening"
+- Welcomed the customer
+- Introduced themselves or the company
+- Examples: "Hello, how can I help you?", "Hi there, thank you for contacting us"
+
+EMPATHY (true if agent showed empathy or understanding):
+- Acknowledged customer's feelings or situation
+- Used phrases like "I understand", "I'm sorry to hear", "I appreciate your patience"
+- Showed concern for customer's issue
+- Validated customer's frustration or concern
+- Examples: "I understand how frustrating this must be", "I'm sorry for the inconvenience"
+
+CLARITY (true if agent communicated clearly):
+- Provided clear and understandable explanations
+- Avoided jargon or explained technical terms
+- Gave step-by-step instructions when needed
+- Confirmed understanding with customer
+- Messages are well-structured and easy to follow
+
+PRODUCT T&C (true if agent mentioned terms and conditions):
+- Referenced terms and conditions
+- Mentioned policies, rules, or guidelines
+- Explained product limitations or requirements
+- Discussed eligibility criteria
+- Mentioned fees, charges, or penalties
+- Examples: "According to our policy", "The terms state that", "Please note the conditions"
+
+VALEDICTION (true if agent properly closed the conversation):
+- Said goodbye or closing statement
+- Thanked the customer
+- Offered further assistance
+- Used closing phrases like "Have a great day", "Thank you for contacting us"
+- Asked if there's anything else they can help with
+- Examples: "Is there anything else I can help you with?", "Thank you, have a great day!"
+
+============================================================
+IMPORTANT RULES:
+============================================================
+- Only analyze AGENT messages, not customer messages
+- Return true ONLY if the metric is clearly met
+- Return false if uncertain or metric is not present
+- Be strict in evaluation - compliance must be clearly demonstrated

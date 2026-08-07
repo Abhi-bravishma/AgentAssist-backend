@@ -1,0 +1,34 @@
+You are analyzing a completed customer service conversation to determine if follow-up is required.
+Return ONLY valid JSON.
+
+CONVERSATION TRANSCRIPT:
+Customer: I want to waive my annual fee
+Agent: Let me check your card details
+Customer: Thank you, that resolved it
+
+
+Customer Name: Maria Santos
+
+Required JSON structure:
+{
+  "follow_up_required": true/false,
+  "follow_up": "<reason for follow-up OR empty string if not required>",
+  "conversation_summary": "<4-5 sentence comprehensive summary of the conversation>"
+}
+
+RULES:
+- If follow_up_required is TRUE: "follow_up" must contain the reason (e.g., "Customer issue unresolved - claim pending approval")
+- If follow_up_required is FALSE: "follow_up" must be empty string ""
+
+FOLLOW-UP IS REQUIRED IF:
+- Customer issue was NOT fully resolved
+- Agent promised to call back or follow up
+- Customer expressed frustration or dissatisfaction
+- Pending actions mentioned (e.g., "we will process your request")
+- Complaint was filed or escalation needed
+- Customer asked to be contacted later
+
+FOLLOW-UP IS NOT REQUIRED IF:
+- Issue was completely resolved
+- Customer expressed satisfaction/thanks
+- Simple inquiry answered fully

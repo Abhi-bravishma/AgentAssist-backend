@@ -1,0 +1,269 @@
+package com.agentassist.golden;
+
+import com.agentassist.ai.BaseAiProvider;
+import com.agentassist.service.checklist.ChecklistService;
+import com.agentassist.service.checklist.ChecklistService.OperationType;
+import com.agentassist.service.processing.ConversationProcessingService;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+/**
+ * Golden-prompt safety net for the Part 1 config-registry restructure.
+ *
+ * <p>Every prompt the application can send to an LLM is captured here as a
+ * fixture file under {@code src/test/resources/golden}. On first run (fixture
+ * absent) the rendered prompt is WRITTEN; on every later run it is COMPARED
+ * byte-for-byte. The fixtures were generated from the pre-restructure code, so
+ * as the prompt source moves from Java constants to the DB registry, any
+ * wording drift — including whitespace and {@code %%} handling — fails a test.
+ *
+ * <p>No LLM is ever called: {@link BaseAiProvider#call} is overridden to
+ * capture the outgoing prompt and return a canned parseable response.
+ */
+class GoldenPromptRegressionTest {
+
+    private static final Path GOLDEN_DIR = Path.of("src", "test", "resources", "golden");
+
+    // ==================== capture plumbing ====================
+
+    /** Records every prompt instead of calling a model. */
+    private static final class CapturingProvider extends BaseAiProvider {
+        private final List<String> prompts = new ArrayList<>();
+        private String cannedResponse = "{}";
+
+        CapturingProvider() {
+            super(null, "golden-capture");
+        }
+
+        @Override
+        protected String call(String promptText) {
+            prompts.add(promptText);
+            return cannedResponse;
+        }
+
+        String lastPrompt() {
+            if (prompts.isEmpty()) {
+                throw new IllegalStateException("no prompt was captured");
+            }
+            return prompts.get(prompts.size() - 1);
+        }
+    }
+
+    private static void compareOrCapture(String fixtureName, String actual) {
+        try {
+            Path file = GOLDEN_DIR.resolve(fixtureName + ".txt");
+            if (Files.notExists(file)) {
+                Files.createDirectories(file.getParent());
+                Files.write(file, actual.getBytes(StandardCharsets.UTF_8));
+                System.out.println("[golden] CAPTURED " + file);
+                return;
+            }
+            String expected = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            assertEquals(expected, actual,
+                    "Prompt drifted from golden fixture: " + fixtureName);
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("fixture I/O failed for " + fixtureName, e);
+        }
+    }
+
+    // ==================== BaseAiProvider prompts ====================
+
+    @Test
+    void analyzeText() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeText(GoldenFixtureInputs.TEXT);
+        compareOrCapture("ai.analyze_text", p.lastPrompt());
+    }
+
+    @Test
+    void analyzeConversation() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeConversation(GoldenFixtureInputs.CONVERSATION, GoldenFixtureInputs.LATEST_MESSAGE);
+        compareOrCapture("ai.analyze_conversation", p.lastPrompt());
+    }
+
+    @Test
+    void analyzeConversationWithContext_withContext() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeConversationWithContext(GoldenFixtureInputs.CONVERSATION,
+                GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.POLICY_CONTEXT);
+        compareOrCapture("ai.analyze_conversation_with_context__with_context", p.lastPrompt());
+    }
+
+    @Test
+    void analyzeConversationWithContext_noContext() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeConversationWithContext(GoldenFixtureInputs.CONVERSATION,
+                GoldenFixtureInputs.LATEST_MESSAGE, null);
+        compareOrCapture("ai.analyze_conversation_with_context__no_context", p.lastPrompt());
+    }
+
+    @Test
+    void analyzeConversationWithChecklist() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeConversationWithChecklist(GoldenFixtureInputs.CONVERSATION,
+                GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.CHECKLIST_CONTEXT,
+                GoldenFixtureInputs.OPERATION_TYPE);
+        compareOrCapture("ai.analyze_conversation_with_checklist", p.lastPrompt());
+    }
+
+    @Test
+    void translateToEnglish() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "ok";
+        p.translateToEnglish(GoldenFixtureInputs.TEXT);
+        compareOrCapture("ai.translate_to_english", p.lastPrompt());
+    }
+
+    @Test
+    void translateFromEnglish_describedLanguage() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "ok";
+        p.translateFromEnglish(GoldenFixtureInputs.TEXT, "zh-Hant");
+        compareOrCapture("ai.translate_from_english__zh-Hant", p.lastPrompt());
+    }
+
+    @Test
+    void translateFromEnglish_rawTag() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "ok";
+        p.translateFromEnglish(GoldenFixtureInputs.TEXT, "fr");
+        compareOrCapture("ai.translate_from_english__fr", p.lastPrompt());
+    }
+
+    @Test
+    void detectLanguage() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "en";
+        p.detectLanguage(GoldenFixtureInputs.TEXT);
+        compareOrCapture("ai.detect_language", p.lastPrompt());
+    }
+
+    @Test
+    void detectOperation() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "GENERAL";
+        p.detectOperationType(GoldenFixtureInputs.CONVERSATION, GoldenFixtureInputs.LATEST_MESSAGE);
+        compareOrCapture("ai.detect_operation", p.lastPrompt());
+    }
+
+    @Test
+    void overallSentiment() {
+        CapturingProvider p = new CapturingProvider();
+        p.cannedResponse = "{\"overall_sentiment_score\": 0.1}";
+        p.computeOverallSentiment(GoldenFixtureInputs.CONVERSATION);
+        compareOrCapture("ai.overall_sentiment", p.lastPrompt());
+    }
+
+    @Test
+    void regenerateSuggestions() {
+        CapturingProvider p = new CapturingProvider();
+        p.regenerateSuggestions(GoldenFixtureInputs.CONVERSATION,
+                GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.PREVIOUS_SUGGESTION);
+        compareOrCapture("ai.regenerate_suggestions", p.lastPrompt());
+    }
+
+    @Test
+    void regenerateSuggestionsWithContext() {
+        CapturingProvider p = new CapturingProvider();
+        p.regenerateSuggestionsWithContext(GoldenFixtureInputs.CONVERSATION,
+                GoldenFixtureInputs.LATEST_MESSAGE, GoldenFixtureInputs.PREVIOUS_SUGGESTION,
+                GoldenFixtureInputs.CHECKLIST_CONTEXT, GoldenFixtureInputs.CUSTOMER_NAME);
+        compareOrCapture("ai.regenerate_suggestions_with_context", p.lastPrompt());
+    }
+
+    @Test
+    void followUpCheck() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeFollowUpRequirement(GoldenFixtureInputs.TRANSCRIPT, GoldenFixtureInputs.CUSTOMER_NAME);
+        compareOrCapture("ai.follow_up_check", p.lastPrompt());
+    }
+
+    @Test
+    void compliance() {
+        CapturingProvider p = new CapturingProvider();
+        p.analyzeCompliance(GoldenFixtureInputs.AGENT_MESSAGES, GoldenFixtureInputs.INTERACTION_ID);
+        compareOrCapture("ai.compliance", p.lastPrompt());
+    }
+
+    // ==================== ChecklistService checklists ====================
+
+    private ChecklistService checklistService() {
+        return new ChecklistService(null, null);
+    }
+
+    @Test
+    void checklistFeeWaiver() {
+        ChecklistService s = checklistService();
+        compareOrCapture("checklist.fee_waiver__default",
+                s.getChecklistPrompt(OperationType.FEE_WAIVER, null));
+        compareOrCapture("checklist.fee_waiver__METRO",
+                s.getChecklistPrompt(OperationType.FEE_WAIVER, "METRO"));
+        compareOrCapture("checklist.fee_waiver__SCB",
+                s.getChecklistPrompt(OperationType.FEE_WAIVER, "SCB"));
+        // Unknown project: bank_name falls back to the PROJECT CODE ITSELF,
+        // hotline to the neutral default (plan §4.6). This fixture pins that.
+        compareOrCapture("checklist.fee_waiver__HOSPITALITY",
+                s.getChecklistPrompt(OperationType.FEE_WAIVER, "HOSPITALITY"));
+    }
+
+    @Test
+    void checklistHomeLoanClosure() {
+        ChecklistService s = checklistService();
+        compareOrCapture("checklist.home_loan_closure__default",
+                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, null));
+        compareOrCapture("checklist.home_loan_closure__METRO",
+                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, "METRO"));
+        compareOrCapture("checklist.home_loan_closure__HOSPITALITY",
+                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, "HOSPITALITY"));
+    }
+
+    @Test
+    void projectIndependentChecklists() {
+        ChecklistService s = checklistService();
+        compareOrCapture("checklist.billing", s.getChecklistPrompt(OperationType.BILLING, "METRO"));
+        compareOrCapture("checklist.policy", s.getChecklistPrompt(OperationType.POLICY, null));
+        compareOrCapture("checklist.claims", s.getChecklistPrompt(OperationType.CLAIMS, null));
+        compareOrCapture("checklist.telco", s.getChecklistPrompt(OperationType.TELCO, null));
+        compareOrCapture("checklist.none", s.getChecklistPrompt(OperationType.NONE, null));
+    }
+
+    // ==================== ConversationProcessingService ====================
+
+    private ConversationProcessingService processingService() {
+        return new ConversationProcessingService(null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void noKnowledgeReply() throws Exception {
+        Field f = ConversationProcessingService.class.getDeclaredField("NO_KNOWLEDGE_REPLY");
+        f.setAccessible(true);
+        compareOrCapture("system.no_knowledge_reply", (String) f.get(null));
+    }
+
+    @Test
+    void filteredIntentMessages() throws Exception {
+        Method m = ConversationProcessingService.class.getDeclaredMethod(
+                "getFilteredIntentMessage", OperationType.class, String.class);
+        m.setAccessible(true);
+        ConversationProcessingService svc = processingService();
+
+        for (OperationType intent : new OperationType[]{
+                OperationType.POLICY, OperationType.CLAIMS, OperationType.FEE_WAIVER,
+                OperationType.HOME_LOAN_CLOSURE, OperationType.BILLING, OperationType.TELCO}) {
+            compareOrCapture("filtered." + intent.name() + "__HOSPITALITY",
+                    (String) m.invoke(svc, intent, "HOSPITALITY"));
+            compareOrCapture("filtered." + intent.name() + "__null",
+                    (String) m.invoke(svc, intent, (String) null));
+        }
+    }
+}

@@ -1,0 +1,3 @@
+# Golden prompt fixtures must be byte-identical across checkouts.
+# No EOL conversion, ever — a CRLF rewrite would fail every golden test.
+src/test/resources/golden/** -text

@@ -1,0 +1,12 @@
+You MUST return pure JSON only. No markdown. No commentary.
+
+Output format:
+{
+  "sentiment": "positive | negative | neutral",
+  "sentiment_score": number,
+  "summary": "short summary",
+  "suggestions": ["1 short empathetic reply"]
+}
+
+Analyze this text:
+I am very unhappy with the delay in my refund.

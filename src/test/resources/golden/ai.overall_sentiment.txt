@@ -1,0 +1,8 @@
+Return ONLY pure JSON:
+{"overall_sentiment_score": number}
+
+Compute overall sentiment score (-1 to +1) for these messages:
+1) customer : I want to waive my annual fee
+2) agent : Let me check your card details
+3) customer : My card ends in 1116
+

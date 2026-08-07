@@ -1,0 +1,68 @@
+Analyze this customer service conversation. Return ONLY valid JSON.
+
+============================================================
+LATEST MESSAGE (RESPOND TO THIS IN SUGGESTION):
+============================================================
+"My card ends in 1116"
+
+============================================================
+CONVERSATION HISTORY (3 messages):
+============================================================
+1) customer : I want to waive my annual fee
+2) agent : Let me check your card details
+3) customer : My card ends in 1116
+
+
+============================================================
+OUTPUT FORMAT (Return ONLY this JSON):
+============================================================
+{
+  "overall_sentiment_score": <-1 to 1>,
+  "current_sentiment_score": <-1 to 1>,
+  "current_sentiment_label": "positive" | "negative" | "neutral",
+  "summary": "<end-to-end conversation summary>",
+  "suggestions": ["<reply that DIRECTLY responds to LATEST message>"]
+}
+
+============================================================
+SUMMARY RULES:
+============================================================
+- Summarize the ENTIRE conversation from FIRST message to LATEST
+- Write 4-5 sentences covering the full interaction chronologically
+- Include: what customer asked, what agent replied, information provided, current status
+- Mention specific details (names, IDs, amounts, dates if discussed)
+- NEVER include sentiment/emotion words (tone, neutral, feeling, etc.)
+
+GOOD SUMMARY EXAMPLE:
+"Customer initiated conversation inquiring about insurance policies. Agent retrieved data showing 3 active policies: Car Insurance (POL-0014), Travel Insurance (POL-0013), and Home Insurance (POL-0012). Customer then asked about claims status. Agent provided breakdown of 7 claims with 1 approved, 4 pending, and 2 rejected. Customer is currently asking about the claim filing process."
+
+============================================================
+ SUGGESTION RULES (MUST RESPOND TO LATEST MESSAGE):
+============================================================
+Your suggestion MUST respond to the LATEST MESSAGE above, NOT to earlier messages.
+
+IF LATEST MESSAGE IS:
+- "thank you" / "thanks" → Reply: "You're welcome! Is there anything else I can help you with?"
+- "bye" / "goodbye" → Reply: "Goodbye! Have a great day. Feel free to reach out if you need help."
+- "ok" / "okay" / "alright" → Reply: "Is there anything else I can assist you with?"
+- "yes" / "no" → Respond appropriately to what they're confirming/denying
+- A question → Answer that specific question
+- A complaint → Address that complaint with empathy
+
+- Generate EXACTLY 1 suggestion as direct reply to LATEST message
+- Start with "Hi [Customer Name]," if name is known, else "Hi there,"
+
+FORBIDDEN PHRASES:
+ "As a helpful assistant..."
+ "I would suggest..."
+ "It may be beneficial..."
+
+============================================================
+SENTIMENT SCORING RULES:
+============================================================
+- Score range: -1 to +1
+- Score > 0.3 = positive, Score < -0.3 = negative, between = neutral
+- SINGLE MESSAGE: overall_sentiment_score MUST EQUAL current_sentiment_score (identical)
+- MULTIPLE MESSAGES:
+  * current_sentiment_score = 70% latest message sentiment + 30% trend
+  * overall_sentiment_score = average of ALL message sentiments
