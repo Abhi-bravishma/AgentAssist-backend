@@ -3,12 +3,8 @@ package com.agentassist.golden;
 import com.agentassist.ai.BaseAiProvider;
 import com.agentassist.configregistry.ConfigRegistryTestBase;
 import com.agentassist.configregistry.PromptService;
-import com.agentassist.service.checklist.ChecklistService.OperationType;
-import com.agentassist.service.processing.ConversationProcessingService;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -207,32 +203,7 @@ class GoldenPromptRegressionTest extends ConfigRegistryTestBase {
     // runs through H2 + Liquibase with the real ChecklistService.
 
     // ==================== ConversationProcessingService ====================
-
-    private ConversationProcessingService processingService() {
-        return new ConversationProcessingService(null, null, null, null, null, null, null, null);
-    }
-
-    @Test
-    void noKnowledgeReply() throws Exception {
-        Field f = ConversationProcessingService.class.getDeclaredField("NO_KNOWLEDGE_REPLY");
-        f.setAccessible(true);
-        compareOrCapture("system.no_knowledge_reply", (String) f.get(null));
-    }
-
-    @Test
-    void filteredIntentMessages() throws Exception {
-        Method m = ConversationProcessingService.class.getDeclaredMethod(
-                "getFilteredIntentMessage", OperationType.class, String.class);
-        m.setAccessible(true);
-        ConversationProcessingService svc = processingService();
-
-        for (OperationType intent : new OperationType[]{
-                OperationType.POLICY, OperationType.CLAIMS, OperationType.FEE_WAIVER,
-                OperationType.HOME_LOAN_CLOSURE, OperationType.BILLING, OperationType.TELCO}) {
-            compareOrCapture("filtered." + intent.name() + "__HOSPITALITY",
-                    (String) m.invoke(svc, intent, "HOSPITALITY"));
-            compareOrCapture("filtered." + intent.name() + "__null",
-                    (String) m.invoke(svc, intent, (String) null));
-        }
-    }
+    // The filtered-intent messages and system.no_knowledge_reply are now served
+    // by IntentRegistryService/PromptService; their fixtures are asserted in
+    // RegistryGoldenPromptTest through those exact services.
 }

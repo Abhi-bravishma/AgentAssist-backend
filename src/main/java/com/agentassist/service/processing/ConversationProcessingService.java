@@ -1,5 +1,8 @@
 package com.agentassist.service.processing;
 
+import com.agentassist.configregistry.IntentRegistryService;
+import com.agentassist.configregistry.PromptService;
+import com.agentassist.configregistry.TemplateKeys;
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.ConversationResponse;
 import com.agentassist.dto.responseDTO.KnowledgeSource;
@@ -24,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -46,6 +50,8 @@ public class ConversationProcessingService {
     private final PolicyCacheService policyCacheService;
     private final ChecklistService checklistService;
     private final ChecklistCacheService checklistCacheService;
+    private final PromptService promptService;
+    private final IntentRegistryService intentRegistryService;
 
     /**
      * Process message without mobile number (backward compatible).
@@ -207,7 +213,8 @@ public class ConversationProcessingService {
             // Provide helpful message instead of going to RAG
             log.info("[Process] Intent {} was filtered for project {}, providing helpful message",
                     currentMessageContext.filteredIntent(), projectName);
-            String filteredIntentMessage = getFilteredIntentMessage(currentMessageContext.filteredIntent(), projectName);
+            String filteredIntentMessage =
+                    intentRegistryService.filteredMessage(currentMessageContext.filteredIntent().name(), projectName);
             SuggestedResponse sr = new SuggestedResponse();
             sr.setEnglishReply(filteredIntentMessage);
             if (!detectedLang.equalsIgnoreCase("en")) {
@@ -279,7 +286,9 @@ public class ConversationProcessingService {
                         suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
                     } else {
                         log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
-                        suggestions = toSuggestedResponses(List.of(NO_KNOWLEDGE_REPLY), detectedLang);
+                        suggestions = toSuggestedResponses(List.of(
+                                promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
+                                detectedLang);
                     }
                 }
             } else if (isSimpleMessage) {
