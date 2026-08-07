@@ -30,6 +30,13 @@ spring:
       ddl-auto: update
     show-sql: false
     database-platform: ${SPRING_JPA_DATABASE_PLATFORM:org.hibernate.dialect.MySQLDialect}
+    properties:
+      hibernate:
+        hbm2ddl:
+          # Liquibase owns the aa_* config-registry tables. Without this filter,
+          # ddl-auto:update tries to MODIFY their clob columns to varchar(255)
+          # (shrinking any whose data happens to fit). See AaSchemaFilterProvider.
+          schema_filter_provider: com.agentassist.configregistry.AaSchemaFilterProvider
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:your-api-key-here}
