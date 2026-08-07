@@ -1,3 +1,8 @@
 # Golden prompt fixtures must be byte-identical across checkouts.
 # No EOL conversion, ever — a CRLF rewrite would fail every golden test.
 src/test/resources/golden/** -text
+
+# The Liquibase seed prompt files are the SOURCE the registry loads into the
+# DB. A CRLF checkout would seed \r\n into every prompt and break byte-identity
+# with the golden fixtures (and change what the model receives).
+src/main/resources/db/changelog/changes/prompts/** -text
