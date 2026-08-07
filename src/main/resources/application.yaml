@@ -11,6 +11,12 @@ spring.servlet.multipart:
   max-request-size: 50MB
 
 spring:
+  # Liquibase owns the config-registry (aa_*) tables. NOTE: this key was
+  # previously at the ROOT level (liquibase.change-log), where Spring never
+  # read it — it only worked because Liquibase's default location happens to
+  # be this same file. Now bound properly under spring.*.
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
   datasource:
       # Local MySQL (default)
       url: jdbc:mysql://localhost:3306/avaya_infinity?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8
@@ -62,10 +68,6 @@ jwt:
 # CORS configuration
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
-
-# Liquibase
-liquibase:
-  change-log: classpath:db/changelog/db.changelog-master.yaml
 
 # RAG Integration
 rag:
