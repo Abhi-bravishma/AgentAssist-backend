@@ -5,7 +5,9 @@ import com.agentassist.configregistry.BrandService;
 import com.agentassist.configregistry.ConfigRegistryException;
 import com.agentassist.configregistry.LanguageRegistryService;
 import com.agentassist.configregistry.PromptService;
+import com.agentassist.configregistry.RegistryStatus;
 import com.agentassist.configregistry.SettingsService;
+import com.agentassist.configregistry.TemplateAdminService;
 import com.agentassist.configregistry.entity.AaSetting;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -33,6 +36,8 @@ public class AdminConfigController {
     private final PromptService promptService;
     private final BrandService brandService;
     private final LanguageRegistryService languageRegistryService;
+    private final TemplateAdminService templateAdminService;
+    private final RegistryStatus registryStatus;
 
     @Operation(summary = "Current AI provider",
             description = "The active provider (openai | ollama) and which providers this deployment has")
@@ -67,6 +72,56 @@ public class AdminConfigController {
         return ResponseEntity.ok(Map.of(
                 "active", aiProviderFactory.activeName(),
                 "available", aiProviderFactory.availableProviders()));
+    }
+
+    @Operation(summary = "Registry health",
+            description = "Startup validation result: which template keys are present/missing.")
+    @GetMapping("/registry-status")
+    public ResponseEntity<?> registryStatus() {
+        Map<String, Object> body = new HashMap<>();
+        body.put("checked", registryStatus.isChecked());
+        body.put("healthy", registryStatus.isHealthy());
+        body.put("missingTemplateKeys", registryStatus.getMissingTemplateKeys());
+        if (registryStatus.getError() != null) {
+            body.put("error", registryStatus.getError());
+        }
+        return ResponseEntity.ok(body);
+    }
+
+    @Operation(summary = "List prompt templates",
+            description = "Every (key, project-variant) with its published and latest version.")
+    @GetMapping("/templates")
+    public ResponseEntity<?> listTemplates() {
+        return ResponseEntity.ok(templateAdminService.list());
+    }
+
+    @Operation(summary = "Template content",
+            description = "Published content of EXACTLY the requested variant (no default fallback).")
+    @GetMapping("/templates/content")
+    public ResponseEntity<?> templateContent(@RequestParam String key,
+                                             @RequestParam(required = false) String project) {
+        return templateAdminService.get(key, project)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(404)
+                        .body(Map.of("error", "No PUBLISHED template for key '" + key + "'"
+                                + (project != null && !project.isBlank() ? " (project " + project + ")" : ""))));
+    }
+
+    @Operation(summary = "Publish a new template version",
+            description = "Inserts version+1 as PUBLISHED and evicts the render cache — live "
+                    + "immediately. Earlier versions remain as history; rollback = republish one.")
+    @PostMapping("/templates")
+    public ResponseEntity<?> publishTemplate(@RequestBody Map<String, String> body) {
+        try {
+            TemplateAdminService.TemplateContent published = templateAdminService.publish(
+                    body != null ? body.get("templateKey") : null,
+                    body != null ? body.get("projectCode") : null,
+                    body != null ? body.get("content") : null,
+                    "admin-portal");
+            return ResponseEntity.ok(published);
+        } catch (ConfigRegistryException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @Operation(summary = "Evict registry caches",

@@ -14,4 +14,12 @@ public interface AaPromptTemplateRepository extends JpaRepository<AaPromptTempla
     /** Highest version with the given status for the default (NULL project). */
     Optional<AaPromptTemplate> findFirstByTemplateKeyAndProjectIdIsNullAndStatusOrderByVersionDesc(
             String templateKey, String status);
+
+    /** Highest version regardless of status — next-version calculation (project variant). */
+    Optional<AaPromptTemplate> findFirstByTemplateKeyAndProjectIdOrderByVersionDesc(
+            String templateKey, Long projectId);
+
+    /** Highest version regardless of status — next-version calculation (default variant). */
+    Optional<AaPromptTemplate> findFirstByTemplateKeyAndProjectIdIsNullOrderByVersionDesc(
+            String templateKey);
 }
