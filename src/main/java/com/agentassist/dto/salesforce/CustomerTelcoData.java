@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -90,7 +93,7 @@ public class CustomerTelcoData {
         if (currentPlanInfo != null) {
             sb.append("Plan Type: ").append(nullSafe(currentPlanInfo.getPlanType())).append("\n");
             sb.append("Network Status: ").append(nullSafe(currentPlanInfo.getNetworkStatus())).append("\n");
-            sb.append("Validity Date: ").append(nullSafe(currentPlanInfo.getValidityDate())).append("\n");
+            appendValidity(sb);
             sb.append("Segment: ").append(nullSafe(currentPlanInfo.getSegment())).append("\n");
 
             // Data usage
@@ -127,7 +130,7 @@ public class CustomerTelcoData {
             sb.append("Plan Name: ").append(currentPlanDetails.getName()).append("\n");
             sb.append("Type: ").append(nullSafe(currentPlanDetails.getType())).append("\n");
             sb.append("Price: ").append(formatIDR(currentPlanDetails.getPrice())).append("\n");
-            sb.append("Validity: ").append(currentPlanDetails.getValidity()).append(" days\n");
+            sb.append("Validity: ").append(planDetailsValidity()).append("\n");
             sb.append("Data Benefit: ").append(nullSafe(currentPlanDetails.getDataBenefit())).append("\n");
             sb.append("Voice Benefit: ").append(nullSafe(currentPlanDetails.getVoiceBenefit())).append("\n");
             sb.append("SMS Benefit: ").append(nullSafe(currentPlanDetails.getSmsBenefit())).append("\n");
@@ -155,7 +158,9 @@ public class CustomerTelcoData {
                 for (TelcoCustomerProduct product : activeProducts) {
                     sb.append("  - ").append(product.getName());
                     sb.append(" | Type: ").append(nullSafe(product.getType()));
-                    sb.append(" | Expiry: ").append(nullSafe(product.getExpiryDate()));
+                    sb.append(" | Activated: ").append(nullSafe(product.getActivationDate()));
+                    sb.append(" | Expiry: ").append(nullSafe(product.getExpiryDate()))
+                            .append(daysLeftSuffix(product.getExpiryDate()));
                     if (product.getRemainingData() != null && product.getRemainingData().compareTo(BigDecimal.ZERO) > 0) {
                         sb.append(" | Remaining Data: ").append(formatGB(product.getRemainingData()));
                     }
@@ -202,7 +207,7 @@ public class CustomerTelcoData {
                 for (TelcoPlan plan : plans) {
                     sb.append("  ").append(plan.isRecommended() ? "⭐ " : "").append(plan.getName());
                     sb.append(" — ").append(formatIDR(plan.getPrice()));
-                    sb.append(" / ").append(plan.getValidity()).append(" days\n");
+                    sb.append(" / ").append(validityDays(plan.getValidity())).append("\n");
                     sb.append("     Data: ").append(nullSafe(plan.getDataBenefit())).append("\n");
                     sb.append("     Voice: ").append(nullSafe(plan.getVoiceBenefit())).append("\n");
                     if (plan.isOttBenefit()) {
@@ -218,7 +223,7 @@ public class CustomerTelcoData {
                 for (TelcoPlan addon : addons) {
                     sb.append("  ").append(addon.getName());
                     sb.append(" — ").append(formatIDR(addon.getPrice()));
-                    sb.append(" / ").append(addon.getValidity()).append(" days");
+                    sb.append(" / ").append(validityDays(addon.getValidity()));
                     sb.append(" | ").append(nullSafe(addon.getDataBenefit()));
                     sb.append("\n");
                 }
@@ -230,7 +235,7 @@ public class CustomerTelcoData {
                 for (TelcoPlan roam : roaming) {
                     sb.append("  ").append(roam.getName());
                     sb.append(" — ").append(formatIDR(roam.getPrice()));
-                    sb.append(" / ").append(roam.getValidity()).append(" days");
+                    sb.append(" / ").append(validityDays(roam.getValidity()));
                     sb.append(" | Countries: ").append(nullSafe(roam.getCountry()));
                     sb.append("\n");
                 }
@@ -242,7 +247,7 @@ public class CustomerTelcoData {
                 for (TelcoPlan offer : offers) {
                     sb.append("  🎁 ").append(offer.getName());
                     sb.append(" — ").append(formatIDR(offer.getPrice()));
-                    sb.append(" / ").append(offer.getValidity()).append(" days\n");
+                    sb.append(" / ").append(validityDays(offer.getValidity())).append("\n");
                     sb.append("     ").append(nullSafe(offer.getDescription())).append("\n");
                 }
             }
@@ -251,6 +256,146 @@ public class CustomerTelcoData {
         }
 
         return sb.toString();
+    }
+
+    // =====================================================
+    // VALIDITY - computed HERE, not left to the model
+    // =====================================================
+    // Salesforce often has no validity field on the telco contact, but the
+    // customer's product row for the current plan carries activation and
+    // expiry dates. Same rule as CustomerBillingData: derive the conclusion
+    // in code and hand it to the model to STATE, so the same record always
+    // produces the same answer and "N/A" never reaches the customer when the
+    // dates to compute it from are sitting right there.
+
+    /**
+     * Current-plan validity: the contact's validity date when present,
+     * otherwise the expiry of the current plan's product. Emits a
+     * pre-computed status line (days remaining / expires today / expired)
+     * the model must repeat rather than re-derive.
+     */
+    private void appendValidity(StringBuilder sb) {
+        String rawDate = currentPlanInfo.getValidityDate();
+        LocalDate expiry = parseDate(rawDate);
+        String source = "contact record";
+        if (expiry == null) {
+            TelcoCustomerProduct planProduct = currentPlanProduct();
+            if (planProduct != null) {
+                expiry = parseDate(planProduct.getExpiryDate());
+                source = "current plan's product dates (activation "
+                        + nullSafe(planProduct.getActivationDate()) + " to expiry "
+                        + nullSafe(planProduct.getExpiryDate()) + ")";
+            }
+        }
+        if (expiry == null) {
+            if (rawDate != null && !rawDate.isBlank()) {
+                // Present but unparseable - pass through untouched
+                sb.append("Validity Date: ").append(rawDate).append("\n");
+            } else {
+                sb.append("Validity Date: not on record - if asked, say the validity "
+                        + "is not on record; do not invent a date\n");
+            }
+            return;
+        }
+        long days = ChronoUnit.DAYS.between(LocalDate.now(), expiry);
+        sb.append("Validity Date: ").append(expiry).append("\n");
+        sb.append("VALIDITY STATUS (already computed from the ").append(source)
+                .append(" - state this, do not recalculate): ");
+        if (days > 0) {
+            sb.append("ACTIVE - expires ").append(expiry).append(", ")
+                    .append(days).append(" day(s) remaining\n");
+        } else if (days == 0) {
+            sb.append("EXPIRES TODAY (").append(expiry).append(")\n");
+        } else {
+            sb.append("EXPIRED ").append(-days).append(" day(s) ago (on ").append(expiry).append(")\n");
+        }
+    }
+
+    /**
+     * Plan validity in days for the CURRENT PLAN DETAILS section. When
+     * Salesforce's Validity__c is absent this used to print the literal
+     * "null days"; now it derives the window from the current product's
+     * activation-to-expiry dates, or states an honest absence.
+     */
+    private String planDetailsValidity() {
+        if (currentPlanDetails.getValidity() != null) {
+            return currentPlanDetails.getValidity() + " days";
+        }
+        TelcoCustomerProduct product = currentPlanProduct();
+        if (product != null) {
+            LocalDate start = parseDate(product.getActivationDate());
+            LocalDate end = parseDate(product.getExpiryDate());
+            if (start != null && end != null && !end.isBefore(start)) {
+                long days = ChronoUnit.DAYS.between(start, end);
+                return days + " days (derived from activation " + start + " to expiry " + end + ")";
+            }
+        }
+        return "not on record";
+    }
+
+    /**
+     * The customer's ACTIVE product row for the current plan. Exact linkage
+     * (productOfferingId = currentPlanId) wins; otherwise a single
+     * unambiguous active Plan-type product; otherwise null - never a guess
+     * between multiple candidates.
+     */
+    private TelcoCustomerProduct currentPlanProduct() {
+        if (customerProducts == null || currentPlanInfo == null) {
+            return null;
+        }
+        String planId = currentPlanInfo.getCurrentPlanId();
+        if (planId != null && !planId.isBlank()) {
+            for (TelcoCustomerProduct p : customerProducts) {
+                if (planId.equals(p.getProductOfferingId())
+                        && "Active".equalsIgnoreCase(p.getStatus())) {
+                    return p;
+                }
+            }
+        }
+        TelcoCustomerProduct only = null;
+        for (TelcoCustomerProduct p : customerProducts) {
+            if ("Active".equalsIgnoreCase(p.getStatus()) && "Plan".equalsIgnoreCase(p.getType())) {
+                if (only != null) {
+                    return null; // ambiguous - do not guess
+                }
+                only = p;
+            }
+        }
+        return only;
+    }
+
+    /** Salesforce dates arrive as ISO strings, sometimes with a time part. */
+    private static LocalDate parseDate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            return LocalDate.parse(trimmed.substring(0, Math.min(10, trimmed.length())));
+        } catch (DateTimeParseException | StringIndexOutOfBoundsException e) {
+            return null;
+        }
+    }
+
+    /** "30 days" or an honest absence - never "null days" for the model to parrot. */
+    private static String validityDays(Integer days) {
+        return days != null ? days + " days" : "validity not on record";
+    }
+
+    /** Days-left suffix for a product expiry, e.g. " (8 day(s) left)". */
+    private static String daysLeftSuffix(String expiryDate) {
+        LocalDate expiry = parseDate(expiryDate);
+        if (expiry == null) {
+            return "";
+        }
+        long days = ChronoUnit.DAYS.between(LocalDate.now(), expiry);
+        if (days > 0) {
+            return " (" + days + " day(s) left)";
+        }
+        if (days == 0) {
+            return " (expires today)";
+        }
+        return " (expired " + (-days) + " day(s) ago)";
     }
 
     private String nullSafe(String value) {
