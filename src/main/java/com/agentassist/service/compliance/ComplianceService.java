@@ -1,6 +1,6 @@
 package com.agentassist.service.compliance;
 
-import com.agentassist.ai.AiProvider;
+import com.agentassist.ai.AiProviderFactory;
 import com.agentassist.dto.responseDTO.ComplianceResponse;
 import com.agentassist.model.Compliance;
 import com.agentassist.repository.ComplianceRepository;
@@ -23,7 +23,7 @@ import java.util.Optional;
 public class ComplianceService {
 
     private final AvayaTranscriptService transcriptService;
-    private final AiProvider aiProvider;
+    private final AiProviderFactory aiProviderFactory;
     private final ComplianceRepository complianceRepository;
 
     /**
@@ -49,7 +49,7 @@ public class ComplianceService {
             log.info("[Compliance] Found {} agent messages for analysis", agentMessages.size());
 
             // 2. Analyze compliance using AI (Ollama)
-            ComplianceResponse response = aiProvider.analyzeCompliance(agentMessages, interactionId);
+            ComplianceResponse response = aiProviderFactory.active().analyzeCompliance(agentMessages, interactionId);
 
             // 3. Save results to database
             saveCompliance(response);

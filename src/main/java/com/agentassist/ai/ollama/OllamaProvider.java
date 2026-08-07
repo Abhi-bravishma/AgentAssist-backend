@@ -5,16 +5,16 @@ import com.agentassist.ai.config.AiConfig;
 import com.agentassist.configregistry.PromptService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
  * Ollama implementation of AiProvider (uses Mistral 7B by default).
- * Activated when ai.provider=ollama (default).
+ * Always registered; whether it is USED is decided per call by
+ * {@link com.agentassist.ai.AiProviderFactory} from the registry setting
+ * ai.active_provider (portal-switchable, one provider active at a time).
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "ai.provider", havingValue = "ollama", matchIfMissing = true)
 public class OllamaProvider extends BaseAiProvider {
 
     public OllamaProvider(OllamaChatModel chatModel, AiConfig config, PromptService promptService) {

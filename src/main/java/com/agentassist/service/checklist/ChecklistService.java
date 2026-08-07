@@ -1,6 +1,6 @@
 package com.agentassist.service.checklist;
 
-import com.agentassist.ai.AiProvider;
+import com.agentassist.ai.AiProviderFactory;
 import com.agentassist.configregistry.BrandService;
 import com.agentassist.configregistry.IntentRegistryService;
 import com.agentassist.configregistry.PromptService;
@@ -29,7 +29,7 @@ import java.util.Map;
 public class ChecklistService {
 
     private final SalesforceClient salesforceClient;
-    private final AiProvider aiProvider;
+    private final AiProviderFactory aiProviderFactory;
     private final PromptService promptService;
     private final BrandService brandService;
     private final IntentRegistryService intentRegistryService;
@@ -137,7 +137,7 @@ public class ChecklistService {
 
         try {
             // Call AI to detect operation type
-            String aiResult = aiProvider.detectOperationType(conversationMessages, latestMessage);
+            String aiResult = aiProviderFactory.active().detectOperationType(conversationMessages, latestMessage);
 
             OperationType operationType = switch (aiResult) {
                 case "FEE_WAIVER" -> OperationType.FEE_WAIVER;

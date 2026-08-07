@@ -1,6 +1,6 @@
 package com.agentassist.service.analysis;
 
-import com.agentassist.ai.AiProvider;
+import com.agentassist.ai.AiProviderFactory;
 import com.agentassist.dto.rag.RagSourceDocument;
 import com.agentassist.dto.rag.RagSuggestionRequest;
 import com.agentassist.dto.rag.RagSuggestionResponse;
@@ -27,7 +27,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AnalysisService {
 
-    private final AiProvider aiProvider;
+    private final AiProviderFactory aiProviderFactory;
     private final MessageService messageService;
     private final TranslationService translationService;
     private final RagClient ragClient;
@@ -36,7 +36,7 @@ public class AnalysisService {
     // CORE AI METHODS
     // -------------------------------------------------------------------------------------
     public AiAnalysisBundle analyzeConversation(List<String> englishConversation, String latestMessage) {
-        return aiProvider.analyzeConversation(englishConversation, latestMessage);
+        return aiProviderFactory.active().analyzeConversation(englishConversation, latestMessage);
     }
 
     /**
@@ -48,7 +48,7 @@ public class AnalysisService {
         if (policyContext == null || policyContext.isBlank()) {
             return analyzeConversation(englishConversation, latestMessage);
         }
-        return aiProvider.analyzeConversationWithContext(englishConversation, latestMessage, policyContext);
+        return aiProviderFactory.active().analyzeConversationWithContext(englishConversation, latestMessage, policyContext);
     }
 
     /**
@@ -69,16 +69,16 @@ public class AnalysisService {
             return analyzeConversation(englishConversation, latestMessage);
         }
         log.info("Analyzing conversation with checklist context for operation: {}", operationType);
-        return aiProvider.analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType);
+        return aiProviderFactory.active().analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType);
     }
 
     public AiAnalysisResult analyzeText(String englishText) {
-        return aiProvider.analyzeText(englishText);
+        return aiProviderFactory.active().analyzeText(englishText);
     }
 
     public double computeOverallSentimentScore(List<String> englishUserMessages) {
         if (englishUserMessages == null || englishUserMessages.isEmpty()) return 0.0;
-        return aiProvider.computeOverallSentiment(englishUserMessages);
+        return aiProviderFactory.active().computeOverallSentiment(englishUserMessages);
     }
 
     public List<String> generateSuggestionsEnglish(String englishContext) {
@@ -364,10 +364,10 @@ public class AnalysisService {
         AiAnalysisBundle bundle;
         if (checklistContext != null && !checklistContext.isBlank()) {
             log.info("Regenerating suggestions with checklist context for customer: {}", customerName);
-            bundle = aiProvider.regenerateSuggestionsWithContext(
+            bundle = aiProviderFactory.active().regenerateSuggestionsWithContext(
                     englishList, latest.getEnglishText(), previousSuggestion, checklistContext, customerName);
         } else {
-            bundle = aiProvider.regenerateSuggestions(englishList, latest.getEnglishText(), previousSuggestion);
+            bundle = aiProviderFactory.active().regenerateSuggestions(englishList, latest.getEnglishText(), previousSuggestion);
         }
 
         // Build suggestions
@@ -432,7 +432,7 @@ public class AnalysisService {
                 .filter(text -> text != null && !text.isBlank())
                 .toList();
 
-        return aiProvider.analyzeFollowUpRequirement(transcript, customerName);
+        return aiProviderFactory.active().analyzeFollowUpRequirement(transcript, customerName);
     }
 
     /**
@@ -452,6 +452,6 @@ public class AnalysisService {
                     .build();
         }
 
-        return aiProvider.analyzeFollowUpRequirement(transcript, customerName);
+        return aiProviderFactory.active().analyzeFollowUpRequirement(transcript, customerName);
     }
 }

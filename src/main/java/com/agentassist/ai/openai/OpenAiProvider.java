@@ -5,16 +5,16 @@ import com.agentassist.ai.config.AiConfig;
 import com.agentassist.configregistry.PromptService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
  * OpenAI implementation of AiProvider.
- * Activated when ai.provider=openai.
+ * Always registered; whether it is USED is decided per call by
+ * {@link com.agentassist.ai.AiProviderFactory} from the registry setting
+ * ai.active_provider (portal-switchable, one provider active at a time).
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "ai.provider", havingValue = "openai")
 public class OpenAiProvider extends BaseAiProvider {
 
     public OpenAiProvider(OpenAiChatModel chatModel, AiConfig config, PromptService promptService) {
