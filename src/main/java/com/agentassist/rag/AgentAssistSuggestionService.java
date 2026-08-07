@@ -96,7 +96,7 @@ public class AgentAssistSuggestionService {
 
         // Build context from documents
         String context = docs.stream()
-                .map(Document::getContent)
+                .map(Document::getText)
                 .collect(Collectors.joining("\n\n"));
 
         // Append additional context (e.g., Salesforce policy data) if provided
@@ -190,7 +190,7 @@ public class AgentAssistSuggestionService {
             Integer chunkIndex = getIntegerMetadata(metadata, "chunkIndex");
 
             // Get content preview
-            String content = doc.getContent();
+            String content = doc.getText();
             String contentPreview = content.length() > MAX_CONTENT_PREVIEW_LENGTH
                     ? content.substring(0, MAX_CONTENT_PREVIEW_LENGTH) + "..."
                     : content;

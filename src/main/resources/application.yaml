@@ -118,7 +118,11 @@ rag:
       initialize-schema: true
     top-k: 3
     vector-score: 0.3
-    min-relevance-score: 0.55
+    # 0.40 is tuned for OpenAI text-embedding-3-small, whose cosine scores run
+    # systematically lower than mxbai's (measured locally: clearly-relevant
+    # questions scored 0.42-0.62). Upstream's 0.55 was tuned for mxbai — restore
+    # it when switching embedding.provider to ollama.
+    min-relevance-score: ${RAG_MIN_RELEVANCE:0.40}
     chunk:
       size: 300
       overlap: 50

@@ -638,7 +638,7 @@ public abstract class BaseAiProvider implements AiProvider {
                 return null;
             }
 
-            String content = response.getResult().getOutput().getContent();
+            String content = response.getResult().getOutput().getText();
             long duration = System.currentTimeMillis() - startTime;
 
             log.info("[AI:{}] Response received in {}ms, length: {}", providerName, duration, content != null ? content.length() : 0);

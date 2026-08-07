@@ -39,9 +39,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * {@link InternalRagProperties}; return types are this app's Rag* DTOs
  * (field-identical to upstream's response JSON); upstream's
  * vectorStoreService.invalidateFileNamesCache() calls dropped (no such cache
- * here — listing queries Qdrant directly); TokenTextSplitter uses Spring AI
- * M4's 5-arg constructor — upstream's Spring AI 1.1.2 adds a separators list
- * as a 6th argument, the first five are identical.</p>
+ * here — listing queries Qdrant directly). Since the Spring AI 1.1.5 upgrade
+ * the splitter call and getText() usage match upstream exactly.</p>
  */
 @Slf4j
 @Service
@@ -191,8 +190,9 @@ public class AgentAssistDocumentService {
             }
         });
 
-        // Split into chunks (M4 splitter: 5-arg; upstream 1.1.2 adds a separators list)
-        TokenTextSplitter splitter = new TokenTextSplitter(chunkSize, chunkOverlap, 5, 2048, true);
+        // Split into chunks — upstream's exact splitter call
+        TokenTextSplitter splitter = new TokenTextSplitter(chunkSize, chunkOverlap, 5, 2048, true,
+                java.util.List.of('.', '?', '!', ';', ':', '\n'));
         List<Document> chunks = splitter.apply(docs);
         log.info("Created {} chunks from {}", chunks.size(), fileName);
 
@@ -201,7 +201,7 @@ public class AgentAssistDocumentService {
         List<Document> safeChunks = new ArrayList<>();
 
         for (Document chunk : chunks) {
-            if (chunk.getContent() == null || chunk.getContent().length() >= 4000) {
+            if (chunk.getText() == null || chunk.getText().length() >= 4000) {
                 continue;
             }
             chunk.getMetadata().put("chunkIndex", chunkIndex.getAndIncrement());

@@ -66,9 +66,9 @@ public class InternalRagConfig {
     @Bean
     public QdrantVectorStore agentAssistVectorStore(QdrantClient qdrantClient,
                                                     @Qualifier("agentAssistEmbeddingModel") EmbeddingModel embeddingModel) {
-        return new QdrantVectorStore(qdrantClient,
-                properties.getQdrant().getCollection(),
-                embeddingModel,
-                properties.getQdrant().isInitializeSchema());
+        return QdrantVectorStore.builder(qdrantClient, embeddingModel)
+                .collectionName(properties.getQdrant().getCollection())
+                .initializeSchema(properties.getQdrant().isInitializeSchema())
+                .build();
     }
 }
