@@ -172,7 +172,10 @@ public class AgentAssistDocumentService {
             d.getMetadata().put("source", getFileExtension(fileName));
             d.getMetadata().put("companyId", String.valueOf(companyId));
             d.getMetadata().put("uploadDate", uploadDate);
-            d.getMetadata().put("uploadTimestamp", uploadTimestamp);
+            // Double, not long: M4's QdrantValueFactory rejects Long metadata
+            // ("Unsupported Qdrant value type") — found by the local smoke test.
+            // Qdrant range filters compare numerics, so date filtering still works.
+            d.getMetadata().put("uploadTimestamp", (double) uploadTimestamp);
             d.getMetadata().put("status", "UPLOADED");
             d.getMetadata().put("useCase", USE_CASE_AGENT_ASSIST);  // Tag for agent assist
             // Searchable by default. Pausing sets this to "false"; retrieval excludes

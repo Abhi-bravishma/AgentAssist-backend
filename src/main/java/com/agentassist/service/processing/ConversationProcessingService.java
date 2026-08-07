@@ -23,6 +23,7 @@ import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
@@ -48,7 +49,7 @@ public class ConversationProcessingService {
     /**
      * Process message without mobile number (backward compatible).
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ConversationResponse processMessage(String interactionId, String from, String messageText) {
         return processMessage(interactionId, from, messageText, null, null);
     }
@@ -56,7 +57,7 @@ public class ConversationProcessingService {
     /**
      * Process message with optional mobile number for Salesforce policy lookup (backward compatible).
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber) {
         return processMessage(interactionId, from, messageText, mobileNumber, null);
     }
@@ -64,7 +65,7 @@ public class ConversationProcessingService {
     /**
      * Process message with optional mobile number and project name for filtering.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber, String projectName) {
         log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}, hasMobile: {}, projectName: {}",
                 interactionId, from, messageText.length(), mobileNumber != null && !mobileNumber.isBlank(),
