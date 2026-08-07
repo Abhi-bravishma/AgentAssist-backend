@@ -1,6 +1,6 @@
 # Restructure Part 1 — Prompt & Config Registry
 
-**Status:** planned, not started
+**Status:** phases 1a + 1b COMPLETE (see SUMMARY.md at repo root); 1c deferred to Part 3
 **Branch:** `restructure/part1-config-registry`
 **Scope:** Part 1 of a 5-part restructure of the agent-assist backend.
 
@@ -473,16 +473,16 @@ and assert equality with the fixture captured in commit 0.
 
 ---
 
-## 12. Open decisions
+## 12. Open decisions — RESOLVED
 
-1. **`ddl-auto`.** Leave `update` and match the entities to the DDL exactly, or exclude
-   the new tables (§4.5).
-2. **Phase 1c timing.** Ship the language fixes in this part, or log them and defer to
-   Part 3. (The spec lists "agent-turn-dropping in conversation history" as a separate
-   task — the 1c language fixes are candidates for the same treatment.)
-3. **Base for the branch.** `restructure/part1-config-registry` should branch from
-   `agent-assist-standalone` (current tip `6d93170`), since that carries the billing +
-   admin-portal work the registry must seed from.
+1. **`ddl-auto`.** RESOLVED: exclude the aa_* tables via `AaSchemaFilterProvider`
+   (§4.5 materialized exactly as feared — Hibernate tried to shrink the clob columns
+   to varchar(255), silently succeeding where seeded data fit). Liquibase is the
+   single owner of the aa_* schema; legacy tables keep historical ddl-auto behaviour.
+2. **Phase 1c timing.** RESOLVED: deferred to Part 3, alongside the
+   agent-turn-dropping fix. §4.9–4.11 document the defects so they are not lost.
+3. **Base for the branch.** RESOLVED: branched from `agent-assist-standalone`
+   (`6d93170`).
 
 ---
 
