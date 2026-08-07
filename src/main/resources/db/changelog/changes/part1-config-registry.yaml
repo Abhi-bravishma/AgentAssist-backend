@@ -1,0 +1,370 @@
+# Part 1 restructure — config registry schema (docs/RESTRUCTURE_PART1_PLAN.md §5).
+#
+# Portability notes:
+# - `clob` is used for all prompt/text content: LONGTEXT on MySQL, TEXT on
+#   PostgreSQL (the docker-compose target), CLOB on H2 (tests). Never LONGTEXT
+#   directly — it is MySQL-only.
+# - Unique constraints that include a NULLABLE project_id (brand attributes,
+#   prompt templates, settings) do NOT prevent duplicate NULL-project rows:
+#   MySQL, PostgreSQL and H2 all treat NULLs as distinct in unique indexes.
+#   The service layer owns that invariant; the constraint still protects every
+#   real-project row.
+databaseChangeLog:
+
+  - changeSet:
+      id: part1-01-aa-project
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_project
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_aa_project_code
+              - column:
+                  name: display_name
+                  type: VARCHAR(255)
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+      rollback:
+        - dropTable:
+            tableName: aa_project
+
+  - changeSet:
+      id: part1-02-aa-brand-attribute
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_brand_attribute
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  # NULL = global default row
+                  name: project_id
+                  type: BIGINT
+              - column:
+                  name: attr_key
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attr_value
+                  type: clob
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: aa_brand_attribute
+            baseColumnNames: project_id
+            referencedTableName: aa_project
+            referencedColumnNames: id
+            constraintName: fk_aa_brand_attribute_project
+        - addUniqueConstraint:
+            tableName: aa_brand_attribute
+            columnNames: project_id, attr_key
+            constraintName: uq_aa_brand_attribute
+      rollback:
+        - dropTable:
+            tableName: aa_brand_attribute
+
+  - changeSet:
+      id: part1-03-aa-intent
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_intent
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_aa_intent_code
+              - column:
+                  name: display_name
+                  type: VARCHAR(255)
+              - column:
+                  # Reserved for Part 2: the classifier prompt will be generated
+                  # from these descriptions instead of the hardcoded intent list.
+                  name: description
+                  type: clob
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  # The "not available through this service" message.
+                  # Supports the {project} placeholder.
+                  name: filtered_message_template
+                  type: clob
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+      rollback:
+        - dropTable:
+            tableName: aa_intent
+
+  - changeSet:
+      id: part1-04-aa-project-intent
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_project_intent
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: project_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: intent_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: aa_project_intent
+            baseColumnNames: project_id
+            referencedTableName: aa_project
+            referencedColumnNames: id
+            constraintName: fk_aa_project_intent_project
+        - addForeignKeyConstraint:
+            baseTableName: aa_project_intent
+            baseColumnNames: intent_id
+            referencedTableName: aa_intent
+            referencedColumnNames: id
+            constraintName: fk_aa_project_intent_intent
+        - addUniqueConstraint:
+            tableName: aa_project_intent
+            columnNames: project_id, intent_id
+            constraintName: uq_aa_project_intent
+      rollback:
+        - dropTable:
+            tableName: aa_project_intent
+
+  - changeSet:
+      id: part1-05-aa-prompt-template
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_prompt_template
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: template_key
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  # NULL = default template, non-NULL = project override
+                  name: project_id
+                  type: BIGINT
+              - column:
+                  name: version
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: content
+                  type: clob
+                  constraints:
+                    nullable: false
+              - column:
+                  # DRAFT | PUBLISHED | ARCHIVED
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: VARCHAR(100)
+        - addForeignKeyConstraint:
+            baseTableName: aa_prompt_template
+            baseColumnNames: project_id
+            referencedTableName: aa_project
+            referencedColumnNames: id
+            constraintName: fk_aa_prompt_template_project
+        - addUniqueConstraint:
+            tableName: aa_prompt_template
+            columnNames: template_key, project_id, version
+            constraintName: uq_aa_prompt_template
+        - createIndex:
+            tableName: aa_prompt_template
+            indexName: ix_aa_prompt_template_lookup
+            columns:
+              - column:
+                  name: template_key
+              - column:
+                  name: status
+      rollback:
+        - dropTable:
+            tableName: aa_prompt_template
+
+  - changeSet:
+      id: part1-06-aa-language
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_language
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  # BCP-47 style tag as used by the app: en, zh-Hant, pt-BR
+                  name: code
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_aa_language_code
+              - column:
+                  # The phrase handed to the translation prompt, e.g.
+                  # "Traditional Chinese (繁體中文), using Traditional characters only"
+                  name: display_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: script
+                  type: VARCHAR(20)
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+      rollback:
+        - dropTable:
+            tableName: aa_language
+
+  - changeSet:
+      id: part1-07-aa-setting
+      author: restructure-part1
+      changes:
+        - createTable:
+            tableName: aa_setting
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: setting_key
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  # NULL = global. Present for symmetry with the other tables;
+                  # Part 1 uses only global rows (ai.active_provider).
+                  name: project_id
+                  type: BIGINT
+              - column:
+                  name: setting_value
+                  type: clob
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+              - column:
+                  name: updated_by
+                  type: VARCHAR(100)
+        - addForeignKeyConstraint:
+            baseTableName: aa_setting
+            baseColumnNames: project_id
+            referencedTableName: aa_project
+            referencedColumnNames: id
+            constraintName: fk_aa_setting_project
+        - addUniqueConstraint:
+            tableName: aa_setting
+            columnNames: setting_key, project_id
+            constraintName: uq_aa_setting
+      rollback:
+        - dropTable:
+            tableName: aa_setting
