@@ -1,6 +1,10 @@
 package com.agentassist.service.checklist;
 
 import com.agentassist.ai.AiProvider;
+import com.agentassist.configregistry.BrandService;
+import com.agentassist.configregistry.IntentRegistryService;
+import com.agentassist.configregistry.PromptService;
+import com.agentassist.configregistry.TemplateKeys;
 import com.agentassist.dto.salesforce.CustomerBillingData;
 import com.agentassist.dto.salesforce.CustomerCreditCardData;
 import com.agentassist.dto.salesforce.CustomerHomeLoanData;
@@ -12,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service for detecting checklist operations (fee waiver, home loan closure)
@@ -25,6 +30,9 @@ public class ChecklistService {
 
     private final SalesforceClient salesforceClient;
     private final AiProvider aiProvider;
+    private final PromptService promptService;
+    private final BrandService brandService;
+    private final IntentRegistryService intentRegistryService;
 
     /**
      * Operation types that can be detected from conversation.
@@ -49,28 +57,9 @@ public class ChecklistService {
      * null/empty: All operations allowed
      */
     public boolean isOperationValidForProject(OperationType operation, String projectName) {
-        if (projectName == null || projectName.isBlank()) {
-            // No project filter - all operations allowed
-            return true;
-        }
-
-        String project = projectName.toUpperCase().trim();
-
-        return switch (project) {
-            case "METRO" -> operation == OperationType.FEE_WAIVER
-                    || operation == OperationType.HOME_LOAN_CLOSURE
-                    || operation == OperationType.BILLING
-                    || operation == OperationType.NONE;
-            case "ALLIANZ" -> operation == OperationType.POLICY
-                    || operation == OperationType.CLAIMS
-                    || operation == OperationType.NONE;
-            case "SCB" -> operation == OperationType.FEE_WAIVER
-                    || operation == OperationType.BILLING
-                    || operation == OperationType.NONE;
-            case "TELCO" -> operation == OperationType.TELCO
-                    || operation == OperationType.NONE;
-            default -> true; // Unknown project - allow all
-        };
+        // Semantics live in aa_project_intent now: null/blank/unknown project or a
+        // project with no rows allows everything; NONE is always allowed.
+        return intentRegistryService.isIntentAllowed(operation.name(), projectName);
     }
 
     /**
@@ -409,34 +398,31 @@ public class ChecklistService {
 
     /**
      * Get the checklist prompt for the given operation type and project.
-     * Returns project-specific checklist when available.
+     * <p>
+     * Registry-backed: the template comes from aa_prompt_template (a project
+     * override such as SCB's fee-waiver wins over the default automatically),
+     * and brand details come from aa_brand_attribute so one bank's name or
+     * hotline never leaks into another project's demo. Brand variables are
+     * computed for every checklist; templates that don't use them simply
+     * ignore the extras — exactly how the old code computed all three
+     * resolve* values regardless of operation type.
      */
     public String getChecklistPrompt(OperationType operationType, String projectName) {
-        // Check for project-specific checklists first
-        if (projectName != null && !projectName.isBlank()) {
-            String project = projectName.toUpperCase().trim();
-
-            if ("SCB".equals(project) && operationType == OperationType.FEE_WAIVER) {
-                return SCB_FEE_WAIVER_CHECKLIST;
-            }
+        if (operationType == OperationType.NONE) {
+            return "";
         }
 
-        // Brand details injected per project so one bank's name/hotline
-        // never leaks into another project's demo
-        String bankName = resolveBankName(projectName);
-        String hotline = resolveHotline(projectName);
-        String loanEmail = resolveLoanEmail(projectName);
+        String bankName = brandService.attr(projectName, BrandService.BANK_NAME);
+        Map<String, String> brandVars = Map.of(
+                "bank_name", bankName,
+                "bank_name_upper", bankName.toUpperCase(),
+                "hotline", brandService.attr(projectName, BrandService.HOTLINE),
+                "loan_email", brandService.attr(projectName, BrandService.LOAN_EMAIL));
 
-        // Default checklists
-        return switch (operationType) {
-            case FEE_WAIVER -> FEE_WAIVER_CHECKLIST.formatted(bankName.toUpperCase(), bankName, hotline);
-            case HOME_LOAN_CLOSURE -> HOME_LOAN_CLOSURE_CHECKLIST.formatted(bankName.toUpperCase(), loanEmail);
-            case POLICY -> POLICY_CHECKLIST;
-            case CLAIMS -> CLAIMS_CHECKLIST;
-            case TELCO -> TELCO_CHECKLIST;
-            case BILLING -> BILLING_CHECKLIST;
-            case NONE -> "";
-        };
+        return promptService.render(
+                TemplateKeys.CHECKLIST_PREFIX + operationType.name().toLowerCase(),
+                projectName,
+                brandVars);
     }
 
     /**

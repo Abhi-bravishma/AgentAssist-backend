@@ -196,46 +196,9 @@ class GoldenPromptRegressionTest {
     }
 
     // ==================== ChecklistService checklists ====================
-
-    private ChecklistService checklistService() {
-        return new ChecklistService(null, null);
-    }
-
-    @Test
-    void checklistFeeWaiver() {
-        ChecklistService s = checklistService();
-        compareOrCapture("checklist.fee_waiver__default",
-                s.getChecklistPrompt(OperationType.FEE_WAIVER, null));
-        compareOrCapture("checklist.fee_waiver__METRO",
-                s.getChecklistPrompt(OperationType.FEE_WAIVER, "METRO"));
-        compareOrCapture("checklist.fee_waiver__SCB",
-                s.getChecklistPrompt(OperationType.FEE_WAIVER, "SCB"));
-        // Unknown project: bank_name falls back to the PROJECT CODE ITSELF,
-        // hotline to the neutral default (plan §4.6). This fixture pins that.
-        compareOrCapture("checklist.fee_waiver__HOSPITALITY",
-                s.getChecklistPrompt(OperationType.FEE_WAIVER, "HOSPITALITY"));
-    }
-
-    @Test
-    void checklistHomeLoanClosure() {
-        ChecklistService s = checklistService();
-        compareOrCapture("checklist.home_loan_closure__default",
-                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, null));
-        compareOrCapture("checklist.home_loan_closure__METRO",
-                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, "METRO"));
-        compareOrCapture("checklist.home_loan_closure__HOSPITALITY",
-                s.getChecklistPrompt(OperationType.HOME_LOAN_CLOSURE, "HOSPITALITY"));
-    }
-
-    @Test
-    void projectIndependentChecklists() {
-        ChecklistService s = checklistService();
-        compareOrCapture("checklist.billing", s.getChecklistPrompt(OperationType.BILLING, "METRO"));
-        compareOrCapture("checklist.policy", s.getChecklistPrompt(OperationType.POLICY, null));
-        compareOrCapture("checklist.claims", s.getChecklistPrompt(OperationType.CLAIMS, null));
-        compareOrCapture("checklist.telco", s.getChecklistPrompt(OperationType.TELCO, null));
-        compareOrCapture("checklist.none", s.getChecklistPrompt(OperationType.NONE, null));
-    }
+    // Moved to ChecklistServiceGoldenTest (DB-backed): the rewired service
+    // resolves its checklists from the registry, so the golden comparison now
+    // runs through H2 + Liquibase with the real ChecklistService.
 
     // ==================== ConversationProcessingService ====================
 
