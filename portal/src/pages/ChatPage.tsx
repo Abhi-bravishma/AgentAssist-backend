@@ -77,15 +77,19 @@ export default function ChatPage() {
         <h2>Test chat</h2>
         <p className="hint" style={{ marginTop: 0 }}>
           Talks to the real <code>/process</code> endpoint — language detection, intent, project
-          gating, checklist and knowledge base included. Pick a project first: gating differs per
-          project, and no selection means the backend default.
+          gating, checklist and knowledge base included. Pick a registered project or type ANY
+          name: unknown projects allow every intent and use the project name as the bank name.
+          Empty means the backend default.
         </p>
         <div className="row">
           <label>Project{' '}
-            <select value={project} onChange={e => setProject(e.target.value)}>
-              <option value="">(backend default)</option>
-              {projects.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <input type="text" list="chat-project-options" value={project}
+                   placeholder="(backend default)"
+                   onChange={e => setProject(e.target.value)}
+                   style={{ width: 200 }} />
+            <datalist id="chat-project-options">
+              {projects.map(p => <option key={p} value={p} />)}
+            </datalist>
           </label>
           <input type="text" placeholder="Mobile number (optional, for customer data)"
                  value={mobile} onChange={e => setMobile(e.target.value)} style={{ width: 260 }} />
