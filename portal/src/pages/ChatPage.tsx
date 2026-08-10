@@ -22,6 +22,12 @@ function newInteractionId(): string {
   return 'portal-chat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
 }
 
+function sentimentFace(score: number): string {
+  if (score >= 0.3) return '😊';
+  if (score <= -0.3) return '😠';
+  return '😐';
+}
+
 export default function ChatPage() {
   const [projects, setProjects] = useState<string[]>([]);
   const [project, setProject] = useState('');
@@ -72,125 +78,123 @@ export default function ChatPage() {
   };
 
   return (
-    <>
-      <section className="panel">
-        <h2>Test chat</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          Talks to the real <code>/process</code> endpoint — language detection, intent, project
-          gating, checklist and knowledge base included. Pick a registered project or type ANY
-          name: unknown projects allow every intent and use the project name as the bank name.
-          Empty means the backend default.
-        </p>
-        <div className="row">
-          <label>Project{' '}
-            <input type="text" list="chat-project-options" value={project}
-                   placeholder="(backend default)"
-                   onChange={e => setProject(e.target.value)}
-                   style={{ width: 200 }} />
-            <datalist id="chat-project-options">
-              {projects.map(p => <option key={p} value={p} />)}
-            </datalist>
-          </label>
-          <input type="text" placeholder="Mobile number (optional, for customer data)"
-                 value={mobile} onChange={e => setMobile(e.target.value)} style={{ width: 260 }} />
-          <span className="spacer" />
-          <span className="hint">session: <code>{interactionId}</code></span>
-          <button className="ghost btn" onClick={newSession}>New session</button>
-        </div>
-      </section>
+    <div className="chat-shell">
+      <div className="chat-toolbar">
+        <label>Project
+          <input type="text" list="chat-project-options" value={project}
+                 placeholder="(default)" style={{ width: 150 }}
+                 onChange={e => setProject(e.target.value)} />
+          <datalist id="chat-project-options">
+            {projects.map(p => <option key={p} value={p} />)}
+          </datalist>
+        </label>
+        <label>Mobile
+          <input type="text" value={mobile} placeholder="optional" style={{ width: 150 }}
+                 onChange={e => setMobile(e.target.value)} />
+        </label>
+        <span className="spacer" />
+        <span className="chat-session" title="interaction id">{interactionId}</span>
+        <button className="ghost btn" onClick={newSession}>✨ New session</button>
+      </div>
 
-      <section className="panel">
-        <div style={{ maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {entries.length === 0 && (
-            <div className="hint">No messages yet. Send one as the customer to see the full pipeline output.</div>
-          )}
-          {entries.map(e => (
-            <div key={e.id}>
-              <div style={{
-                display: 'flex',
-                justifyContent: e.from === 'customer' ? 'flex-start' : 'flex-end',
-              }}>
-                <div style={{
-                  background: 'var(--bg)', borderRadius: 10, padding: '8px 12px', maxWidth: '75%',
-                }}>
-                  <div className="hint" style={{ marginBottom: 2 }}>
-                    {e.from === 'customer' ? 'Customer' : 'Agent'}
-                  </div>
-                  {e.text}
-                </div>
-              </div>
-              {e.pending && <div className="hint" style={{ marginTop: 4 }}>processing…</div>}
-              {e.error && <div className="hint" style={{ marginTop: 4, color: '#c00' }}>Error: {e.error}</div>}
-              {e.result && <ResultCard r={e.result} />}
+      <div className="chat-log">
+        {entries.length === 0 && (
+          <div className="chat-empty">
+            <div className="big">💬</div>
+            <div>Talk to the real pipeline — try <b>“I want to waive my annual fee”</b> on METRO,</div>
+            <div className="hint" style={{ marginTop: 4 }}>
+              or start in another language and switch to English mid-chat to watch the reply
+              language stick. Type any project name to test an unregistered one.
             </div>
-          ))}
-          <div ref={bottom} />
-        </div>
+          </div>
+        )}
+        {entries.map(e => (
+          <div key={e.id}>
+            <div className={'msg-row ' + (e.from === 'customer' ? 'customer' : 'agent')}>
+              <div className="avatar">{e.from === 'customer' ? '🙋' : '🎧'}</div>
+              <div className="bubble">
+                <div className="who">{e.from === 'customer' ? 'Customer' : 'Agent'}</div>
+                {e.text}
+              </div>
+            </div>
+            {e.pending && (
+              <div className="ai-card" style={{ width: 'fit-content' }}>
+                <span className="typing"><span /><span /><span /></span>
+              </div>
+            )}
+            {e.error && <div className="err-bubble">⚠ {e.error}</div>}
+            {e.result && <ResultCard r={e.result} />}
+          </div>
+        ))}
+        <div ref={bottom} />
+      </div>
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <textarea rows={2} placeholder="Type a message… (Enter to send as customer)"
-                    value={text}
-                    onChange={e => setText(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send('customer'); }
-                    }}
-                    style={{ flex: 1 }} />
-          <button className="btn" onClick={() => send('customer')} disabled={busy || !text.trim()}>
-            {busy ? 'Processing…' : 'Send as customer'}
-          </button>
-          <button className="ghost btn" onClick={() => send('user')} disabled={busy || !text.trim()}>
-            Send as agent
-          </button>
-        </div>
-      </section>
-    </>
+      <div className="chat-composer">
+        <textarea rows={1} placeholder="Type a message…  (Enter = send as customer)"
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send('customer'); }
+                  }} />
+        <button className="btn" onClick={() => send('customer')} disabled={busy || !text.trim()}>
+          {busy ? '…' : 'Send 🙋'}
+        </button>
+        <button className="ghost btn" onClick={() => send('user')} disabled={busy || !text.trim()}
+                title="Agent messages are saved but get no suggestions — same as production">
+          as agent 🎧
+        </button>
+      </div>
+    </div>
   );
 }
 
 function ResultCard({ r }: { r: ProcessResponse }) {
   const [open, setOpen] = useState(false);
+  const copy = (s: string) => {
+    navigator.clipboard.writeText(s).then(() => toast('Copied'));
+  };
   return (
-    <div style={{
-      border: '1px solid var(--border, #ddd)', borderRadius: 10,
-      padding: '10px 12px', margin: '6px 0 0 24px',
-    }}>
-      <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <span className="pill">sentiment {r.currentSentiment}</span>
-        <span className="pill">overall {r.overallSentiment}</span>
-        {r.checklistOperation && <span className="tag">intent: {r.checklistOperation}</span>}
-        {r.usedChecklist && <span className="tag">customer data</span>}
-        {r.usedKnowledgeBase
-          ? <span className="tag">knowledge base ({r.documentsFound} docs)</span>
-          : <span className="hint">no KB match</span>}
-        {r.customerName && <span className="tag">{r.customerName}</span>}
+    <div className="ai-card">
+      <div className="chips">
+        <span className="tag" title="current message sentiment">
+          {sentimentFace(r.currentSentiment)} {r.currentSentiment}
+        </span>
+        <span className="tag" title="overall conversation sentiment">
+          Σ {r.overallSentiment}
+        </span>
+        {r.checklistOperation && <span className="pill warn">🎯 {r.checklistOperation}</span>}
+        {r.usedChecklist && <span className="pill">🗂 customer data</span>}
+        {r.usedKnowledgeBase && <span className="pill">📚 KB · {r.documentsFound}</span>}
+        {r.customerName && <span className="tag">👤 {r.customerName}</span>}
       </div>
 
       {r.suggestedResponses.map((s, i) => (
-        <div key={i} style={{ marginTop: 8 }}>
-          <div className="hint">Suggested reply {r.suggestedResponses.length > 1 ? i + 1 : ''}</div>
-          <div>{s.englishReply}</div>
-          {s.userLanguageReply && (
-            <div style={{ marginTop: 2, fontStyle: 'italic' }}>{s.userLanguageReply}</div>
-          )}
+        <div key={i} className="suggestion">
+          <div className="s-label">
+            💡 Suggested reply{r.suggestedResponses.length > 1 ? ' ' + (i + 1) : ''}
+            <button className="link" onClick={() => copy(s.userLanguageReply || s.englishReply)}>copy</button>
+          </div>
+          <div className="s-en">{s.englishReply}</div>
+          {s.userLanguageReply && <div className="s-user">🌐 {s.userLanguageReply}</div>}
         </div>
       ))}
 
       {r.knowledgeSources.length > 0 && (
-        <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
+        <div className="chips" style={{ marginTop: 8 }}>
           {r.knowledgeSources.map((k, i) => (
             <span key={i} className="tag" title={k.contentPreview || ''}>
-              {k.fileName}{k.relevanceScore != null ? ` (${k.relevanceScore.toFixed(2)})` : ''}
+              📄 {k.fileName}{k.relevanceScore != null ? ` · ${k.relevanceScore.toFixed(2)}` : ''}
             </span>
           ))}
         </div>
       )}
 
       {r.summary && (
-        <div style={{ marginTop: 8 }}>
-          <button className="ghost btn" onClick={() => setOpen(!open)}>
-            {open ? 'Hide summary' : 'Show summary'}
+        <div style={{ marginTop: 6 }}>
+          <button className="link" onClick={() => setOpen(!open)}>
+            {open ? 'hide summary' : 'summary…'}
           </button>
-          {open && <div className="hint" style={{ marginTop: 6 }}>{r.summary}</div>}
+          {open && <div className="hint" style={{ marginTop: 4 }}>{r.summary}</div>}
         </div>
       )}
     </div>
