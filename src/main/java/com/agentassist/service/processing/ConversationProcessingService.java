@@ -178,9 +178,15 @@ public class ConversationProcessingService {
         var conv = conversationService.getOrCreate(ctx.interactionId);
         String baseLanguage = conv.getBaseLanguage();
         if (ctx.isCustomer && (baseLanguage == null || baseLanguage.isBlank())) {
-            conversationService.setBaseLanguage(ctx.interactionId, ctx.detectedLang);
-            baseLanguage = ctx.detectedLang;
-            log.info("[Process] Set base language to: {}", ctx.detectedLang);
+            if (LanguageService.isUsable(ctx.detectedLang)) {
+                conversationService.setBaseLanguage(ctx.interactionId, ctx.detectedLang);
+                baseLanguage = ctx.detectedLang;
+                log.info("[Process] Set base language to: {}", ctx.detectedLang);
+            } else {
+                // §4.10: never poison the conversation with "und" - leave the base
+                // language unset so the next successful detection records it.
+                log.warn("[Process] Language detection returned '{}' - not storing as base language, will retry on the next customer message", ctx.detectedLang);
+            }
         }
         ctx.replyLang = LanguageService.replyLanguage(baseLanguage, ctx.detectedLang);
         if (!ctx.replyLang.equalsIgnoreCase(ctx.detectedLang)) {

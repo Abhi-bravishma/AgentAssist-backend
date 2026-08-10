@@ -31,4 +31,24 @@ class ReplyLanguageTest {
         assertEquals("id", LanguageService.replyLanguage("id", "id"));
         assertEquals("en", LanguageService.replyLanguage("en", "en"));
     }
+
+    // ==================== §4.10: "und" never wins ====================
+
+    @Test
+    void undeterminedBaseYieldsToCurrentLanguage() {
+        // A stored "und" must not pin the conversation to failed detection.
+        assertEquals("id", LanguageService.replyLanguage("und", "id"));
+        assertEquals("en", LanguageService.replyLanguage("UND", "en"));
+    }
+
+    @Test
+    void usableRejectsBlankAndUndetermined() {
+        assertEquals(false, LanguageService.isUsable(null));
+        assertEquals(false, LanguageService.isUsable(""));
+        assertEquals(false, LanguageService.isUsable("  "));
+        assertEquals(false, LanguageService.isUsable("und"));
+        assertEquals(false, LanguageService.isUsable("UND"));
+        assertEquals(true, LanguageService.isUsable("en"));
+        assertEquals(true, LanguageService.isUsable("zh-Hant"));
+    }
 }
