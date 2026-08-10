@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { admin, kb } from './api';
 import DocumentsPage from './pages/DocumentsPage';
 import PromptsPage from './pages/PromptsPage';
+import RegistryPage from './pages/RegistryPage';
 import SettingsPage from './pages/SettingsPage';
 
-type Tab = 'documents' | 'prompts' | 'settings';
+type Tab = 'documents' | 'prompts' | 'registry' | 'settings';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>(
@@ -41,7 +42,7 @@ export default function App() {
       <header>
         <h1>Agent Assist — Portal</h1>
         <nav>
-          {(['documents', 'prompts', 'settings'] as Tab[]).map(t => (
+          {(['documents', 'prompts', 'registry', 'settings'] as Tab[]).map(t => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t[0].toUpperCase() + t.slice(1)}
             </button>
@@ -58,6 +59,7 @@ export default function App() {
       <main>
         {tab === 'documents' && <DocumentsPage />}
         {tab === 'prompts' && <PromptsPage />}
+        {tab === 'registry' && <RegistryPage />}
         {tab === 'settings' && <SettingsPage onProviderChanged={refreshHeader} />}
       </main>
     </>

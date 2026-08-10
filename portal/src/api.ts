@@ -110,3 +110,81 @@ export const admin = {
     }),
   evictCaches: () => api<{ message: string }>(`${CFG}/cache/evict`, { method: 'POST' }),
 };
+
+// ==================== registry CRUD (Part 5) ====================
+
+export interface Project {
+  code: string;
+  displayName: string;
+  active: boolean;
+  restricted: boolean; // false = ALL intents allowed (no whitelist rows)
+  enabledIntents: string[];
+}
+
+export interface Intent {
+  code: string;
+  displayName: string;
+  active: boolean;
+  description: string | null; // the classifier rule
+  filteredMessageTemplate: string | null; // {project} placeholder
+}
+
+export interface BrandAttribute {
+  id: number;
+  projectCode: string | null; // null = global default
+  attrKey: string;
+  attrValue: string;
+}
+
+const REG = '/api/v1/admin/registry';
+
+export const registry = {
+  projects: () => api<Project[]>(`${REG}/projects`),
+  createProject: (code: string, displayName: string) =>
+    api<Project>(`${REG}/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, displayName }),
+    }),
+  updateProject: (code: string, patch: { displayName?: string; active?: boolean }) =>
+    api<Project>(`${REG}/projects/${encodeURIComponent(code)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+  setProjectIntents: (code: string, restricted: boolean, enabled: string[]) =>
+    api<Project>(`${REG}/projects/${encodeURIComponent(code)}/intents`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restricted, enabled }),
+    }),
+
+  intents: () => api<Intent[]>(`${REG}/intents`),
+  createIntent: (i: {
+    code: string; displayName: string; description: string; filteredMessageTemplate: string;
+  }) =>
+    api<Intent>(`${REG}/intents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(i),
+    }),
+  updateIntent: (
+    code: string,
+    patch: { displayName?: string; description?: string; filteredMessageTemplate?: string; active?: boolean },
+  ) =>
+    api<Intent>(`${REG}/intents/${encodeURIComponent(code)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  brandAttributes: () => api<BrandAttribute[]>(`${REG}/brand-attributes`),
+  upsertBrandAttribute: (projectCode: string, attrKey: string, attrValue: string) =>
+    api<BrandAttribute>(`${REG}/brand-attributes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectCode, attrKey, attrValue }),
+    }),
+  deleteBrandAttribute: (id: number) =>
+    api(`${REG}/brand-attributes/${id}`, { method: 'DELETE' }),
+};

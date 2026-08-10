@@ -12,7 +12,7 @@
 | **2** | Split `BaseAiProvider` (1,454 lines) into focused components; classifier driven by `aa_intent` rows; remove `OperationType` enum → open string intent codes | ✅ **DONE** (2a `e05c9dd`, 2b `89269c3`, 2c `06d6b69`) |
 | **3** | Pipeline/stage refactor of `ConversationProcessingService.processMessage()` + deferred language defects (§4.9–4.11 of Part 1 plan) | ✅ **DONE** (3a pipeline stages, 3b §4.9 sticky base language / §4.10 no silent und degrade / §4.11 aa_language display names, 3c TranslationService collapsed into LanguageService) |
 | **4** | Internal RAG — agent-assist lane copied verbatim from bravishma-rag into this app (`com.agentassist.rag`, `RagGateway` internal/remote modes) | ✅ **DONE** (early, out of order) |
-| **5** | Admin portal — separate React app (`portal/`, Vite+React18+TS, port 5174) | 🟡 **PARTIAL** — prompts/documents/settings pages work; CRUD for projects/intents/brand attributes still missing |
+| **5** | Admin portal — separate React app (`portal/`, Vite+React18+TS, port 5174) | ✅ **DONE** — documents, prompts, settings + Registry tab (projects with whitelist matrix, intents with classifier-rule editor, brand attributes) via `/api/v1/admin/registry` |
 
 ## What "done" means (acceptance gates)
 
@@ -25,13 +25,11 @@
 
 ## Remaining work (in order)
 
-1. **Part 5 completion — portal CRUD** for projects, intents, brand attributes
-   (until then: SQL recipes in [SUMMARY.md](../SUMMARY.md))
-2. **Agent-turn-dropping in conversation history** — separate task
-3. **Ollama hookup** — ON HOLD until server available. Config ready:
+1. **Agent-turn-dropping in conversation history** — separate task
+2. **Ollama hookup** — ON HOLD until server available. Config ready:
    `ai.active_provider=ollama` setting + collection `pdf_docs_new_mxbai-embed-large`
    + base-url; restore `minRelevanceScore` 0.55 for mxbai (0.40 is OpenAI-tuned)
-4. **KB re-upload** (user's task) — docs into `agent_assist_docs_openai`
+3. **KB re-upload** (user's task) — docs into `agent_assist_docs_openai`
    (1536-dim, OpenAI text-embedding-3-small) on 74.225.250.214:6334; old mxbai
    collection is dimension-incompatible
 
