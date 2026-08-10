@@ -468,10 +468,16 @@ public class SalesforceClient {
         TelcoCustomerProductResponse productResponse = getTelcoCustomerProducts(mobileNumber);
         TelcoPlanResponse planResponse = getTelcoPlans();
 
-        // Fetch current plan details if available
+        // Fetch current plan details if available. Real records often carry the
+        // current plan only as the embedded currentPlan OBJECT (no
+        // Current_Plan__c id field), so fall back to its offering id.
         TelcoPlan currentPlan = null;
         if (contactResponse != null && contactResponse.getData() != null && !contactResponse.getData().isEmpty()) {
-            String currentPlanId = contactResponse.getData().get(0).getCurrentPlanId();
+            TelcoContact first = contactResponse.getData().get(0);
+            String currentPlanId = first.getCurrentPlanId();
+            if ((currentPlanId == null || currentPlanId.isBlank()) && first.getCurrentPlan() != null) {
+                currentPlanId = first.getCurrentPlan().getOfferingId();
+            }
             if (currentPlanId != null && !currentPlanId.isBlank()) {
                 currentPlan = getTelcoPlanById(currentPlanId);
             }

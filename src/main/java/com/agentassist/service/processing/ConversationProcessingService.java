@@ -451,6 +451,8 @@ public class ConversationProcessingService {
             customerName = ctx.checklistContext.policyData().getCustomerName();
         } else if (ctx.checklistContext != null && ctx.checklistContext.billingData() != null) {
             customerName = ctx.checklistContext.billingData().getCustomerName();
+        } else if (ctx.checklistContext != null && ctx.checklistContext.telcoData() != null) {
+            customerName = ctx.checklistContext.telcoData().getCustomerName();
         } else if (effectivePolicyData != null) {
             customerName = effectivePolicyData.getCustomerName();
         }

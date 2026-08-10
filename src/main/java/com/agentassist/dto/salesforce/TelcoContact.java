@@ -64,9 +64,51 @@ public class TelcoContact {
     @JsonProperty("Current_Plan__c")
     private String currentPlanId;
 
+    /**
+     * The API also embeds the current plan as an OBJECT (name, offering id,
+     * status, activation/expiry). Real records often carry ONLY this — no
+     * Current_Plan__c, no Validity_Date__c — so ignoring it meant "validity
+     * not on record" while the dates sat right here.
+     */
+    @JsonProperty("currentPlan")
+    private CurrentPlanRef currentPlan;
+
     @JsonProperty("CreatedDate")
     private String createdDate;
 
     @JsonProperty("LastModifiedDate")
     private String lastModifiedDate;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CurrentPlanRef {
+
+        @JsonProperty("CustomerProductId")
+        private String customerProductId;
+
+        @JsonProperty("Name")
+        private String name;
+
+        @JsonProperty("OfferingId")
+        private String offeringId;
+
+        /** Human plan name, e.g. "Ultra 30". */
+        @JsonProperty("Offering")
+        private String offeringName;
+
+        @JsonProperty("Status__c")
+        private String status;
+
+        @JsonProperty("Activation_Date__c")
+        private String activationDate;
+
+        @JsonProperty("Expiry_Date__c")
+        private String expiryDate;
+
+        @JsonProperty("Purchase_Amount__c")
+        private BigDecimal purchaseAmount;
+    }
 }

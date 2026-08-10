@@ -130,6 +130,34 @@ class CustomerTelcoDataValidityTest {
     }
 
     @Test
+    void expiredCurrentPlanFromNestedContactObjectSaysExpired() {
+        // The live +65...2183 record: no Validity_Date__c, no Current_Plan__c
+        // id - just the embedded currentPlan OBJECT whose plan is EXPIRED.
+        // "Your plan expired N days ago" is exactly what validity must say.
+        TelcoContact c = contact(null, null);
+        c.setCurrentPlan(TelcoContact.CurrentPlanRef.builder()
+                .customerProductId("CP1").offeringId("OFF1").offeringName("Ultra 30")
+                .status("Expired")
+                .activationDate(TODAY.minusDays(44).toString())
+                .expiryDate(TODAY.minusDays(14).toString())
+                .build());
+        CustomerTelcoData d = data(
+                c,
+                List.of(
+                        product("OFF1", "Plan", "Expired", TODAY.minusDays(44), TODAY.minusDays(14)),
+                        product("ROAM1", "Roaming", "Active", TODAY.minusDays(5), TODAY.plusDays(2))),
+                null, null);
+
+        String ctx = d.toAiContext();
+        assertTrue(ctx.contains("EXPIRED 14 day(s) ago"), ctx);
+        assertTrue(ctx.contains("'Ultra 30'"), ctx);
+        assertTrue(ctx.contains("state this, do not recalculate"), ctx);
+        // the active roaming pass still shows its own days left in the product list
+        assertTrue(ctx.contains("(2 day(s) left)"), ctx);
+        assertFalse(ctx.contains("not on record"), ctx);
+    }
+
+    @Test
     void perProductValidityCoversExpiredProductsToo() {
         CustomerTelcoData d = data(
                 contact(null, null),

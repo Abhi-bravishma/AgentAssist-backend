@@ -278,6 +278,17 @@ public class CustomerTelcoData {
         String rawDate = currentPlanInfo.getValidityDate();
         LocalDate expiry = parseDate(rawDate);
         String source = "contact record";
+        if (expiry == null && currentPlanInfo.getCurrentPlan() != null) {
+            // The contact names its current plan explicitly - including when
+            // that plan is EXPIRED, which is precisely the answer the customer
+            // is asking for. No status filter here on purpose.
+            TelcoContact.CurrentPlanRef ref = currentPlanInfo.getCurrentPlan();
+            expiry = parseDate(ref.getExpiryDate());
+            source = "contact's current plan "
+                    + (ref.getOfferingName() != null ? "'" + ref.getOfferingName() + "' " : "")
+                    + "(activation " + nullSafe(ref.getActivationDate())
+                    + " to expiry " + nullSafe(ref.getExpiryDate()) + ")";
+        }
         if (expiry == null) {
             TelcoCustomerProduct planProduct = currentPlanProduct();
             if (planProduct != null) {
