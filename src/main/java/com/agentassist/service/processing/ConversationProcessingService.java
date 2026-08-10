@@ -1,5 +1,6 @@
 package com.agentassist.service.processing;
 
+import com.agentassist.configregistry.IntentCodes;
 import com.agentassist.configregistry.IntentRegistryService;
 import com.agentassist.configregistry.PromptService;
 import com.agentassist.configregistry.TemplateKeys;
@@ -14,7 +15,6 @@ import com.agentassist.service.analysis.AnalysisService;
 import com.agentassist.service.checklist.ChecklistCacheService;
 import com.agentassist.service.checklist.ChecklistService;
 import com.agentassist.service.checklist.ChecklistService.ChecklistContext;
-import com.agentassist.service.checklist.ChecklistService.OperationType;
 import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
 import com.agentassist.service.salesforce.PolicyCacheService;
@@ -132,10 +132,10 @@ public class ConversationProcessingService {
         // Always detect intent for current message (filtered by projectName)
         // METRO: FEE_WAIVER, HOME_LOAN_CLOSURE | ALLIANZ: POLICY, CLAIMS | null: ALL
         ChecklistContext currentMessageContext = checklistService.buildChecklistContext(englishConversation, originalConversation, mobileNumber, projectName);
-        OperationType currentIntent = currentMessageContext.operationType();
+        String currentIntent = currentMessageContext.operationType();
         log.info("[Process] Current message intent: {} (project: {})", currentIntent, projectName != null ? projectName : "ALL");
 
-        if (currentIntent != OperationType.NONE) {
+        if (!IntentCodes.NONE.equals(currentIntent)) {
             // Current message is fee waiver or home loan - use checklist flow
             checklistContext = currentMessageContext;
             checklistCacheService.put(interactionId, checklistContext);
@@ -168,7 +168,7 @@ public class ConversationProcessingService {
             bundle = analysisService.analyzeConversationWithChecklist(
                     englishConversation, english,
                     checklistContext.getFullContext(),
-                    checklistContext.operationType().name());
+                    checklistContext.operationType());
         } else {
             // Standard analysis - use cached Salesforce data if available
             log.info("[Process] Using standard AI analysis with context: {}", policyContext != null ? "yes" : "no");
@@ -207,7 +207,7 @@ public class ConversationProcessingService {
             log.info("[Process] Intent {} was filtered for project {}, providing helpful message",
                     currentMessageContext.filteredIntent(), projectName);
             String filteredIntentMessage =
-                    intentRegistryService.filteredMessage(currentMessageContext.filteredIntent().name(), projectName);
+                    intentRegistryService.filteredMessage(currentMessageContext.filteredIntent(), projectName);
             SuggestedResponse sr = new SuggestedResponse();
             sr.setEnglishReply(filteredIntentMessage);
             if (!detectedLang.equalsIgnoreCase("en")) {
@@ -225,7 +225,7 @@ public class ConversationProcessingService {
             // A billing question can only be answered from the customer's own record - no
             // FAQ document knows their balance - so the knowledge base never overrides it.
             // Documents are still fetched for the knowledge-source chips.
-            boolean customerDataOnly = checklistContext.operationType() == OperationType.BILLING;
+            boolean customerDataOnly = IntentCodes.BILLING.equals(checklistContext.operationType());
 
             // Checklist answer - built up front so it is ready as the fallback
             List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
@@ -346,8 +346,8 @@ public class ConversationProcessingService {
                 .policiesFound(policiesFound)
                 .claimsFound(claimsFound)
                 .usedChecklist(checklistContext != null && checklistContext.hasContext())
-                .checklistOperation(checklistContext != null && checklistContext.operationType() != OperationType.NONE
-                        ? checklistContext.operationType().name() : null)
+                .checklistOperation(checklistContext != null && !IntentCodes.NONE.equals(checklistContext.operationType())
+                        ? checklistContext.operationType() : null)
                 .creditCardsFound(creditCardsFound)
                 .homeLoansFound(homeLoansFound)
                 .projectName(projectName)
