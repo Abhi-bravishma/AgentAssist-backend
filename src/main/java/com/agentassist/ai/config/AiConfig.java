@@ -17,15 +17,15 @@ public class AiConfig {
     private OpenAiConfig openai = new OpenAiConfig();
     private OllamaConfig ollama = new OllamaConfig();
 
+    // NOTE: the live temperature comes from spring.ai.*.chat.options.temperature,
+    // not from here - the old ai.*.temperature keys were read by nothing.
     @Data
     public static class OpenAiConfig {
         private String model = "gpt-4o-mini";
-        private double temperature = 0.2;
     }
 
     @Data
     public static class OllamaConfig {
         private String model = "mistral:7b";
-        private double temperature = 0.2;
     }
 }

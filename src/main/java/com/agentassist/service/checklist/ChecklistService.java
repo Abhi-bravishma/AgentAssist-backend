@@ -136,22 +136,8 @@ public class ChecklistService {
 
     /**
      * Build checklist context by detecting operation and fetching customer data.
-     */
-    public ChecklistContext buildChecklistContext(List<String> conversationMessages, String mobileNumber) {
-        return buildChecklistContext(conversationMessages, null, mobileNumber, null);
-    }
-
-    /**
-     * Build checklist context by detecting operation and fetching customer data.
-     * Uses original messages for better multi-language detection.
-     */
-    public ChecklistContext buildChecklistContext(List<String> englishMessages, List<String> originalMessages, String mobileNumber) {
-        return buildChecklistContext(englishMessages, originalMessages, mobileNumber, null);
-    }
-
-    /**
-     * Build checklist context by detecting operation and fetching customer data.
-     * Project gating comes from aa_project_intent via IntentRegistryService.
+     * Uses original messages (when given) for better multi-language detection;
+     * project gating comes from aa_project_intent via IntentRegistryService.
      */
     public ChecklistContext buildChecklistContext(List<String> englishMessages, List<String> originalMessages,
                                                   String mobileNumber, String projectName) {

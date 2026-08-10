@@ -29,16 +29,6 @@ public class RagSuggestionRequest {
     private String latestMessage;
 
     /**
-     * Optional agent prompt configuration ID.
-     */
-    private Long agentId;
-
-    /**
-     * Optional search filters.
-     */
-    private RagSearchFilter filters;
-
-    /**
      * Number of suggestions to generate (default: 3).
      */
     private Integer suggestionCount;

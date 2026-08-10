@@ -34,13 +34,6 @@ public class SalesforceClient {
     }
 
     /**
-     * Check if Salesforce integration is enabled.
-     */
-    public boolean isEnabled() {
-        return salesforceConfig.isEnabled();
-    }
-
-    /**
      * Fetch the customer's billing position (outstanding balance, minimum due, due date)
      * from the Salesforce Contact record.
      * <p>

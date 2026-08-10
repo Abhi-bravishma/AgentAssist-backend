@@ -61,13 +61,6 @@ public abstract class BaseAiProvider implements AiProvider {
         log.info("[AI] Provider initialized: {}", providerName);
     }
 
-    /**
-     * Get the provider name for logging.
-     */
-    public String getProviderName() {
-        return providerName;
-    }
-
     @Override
     public String complete(String prompt) {
         return call(prompt);

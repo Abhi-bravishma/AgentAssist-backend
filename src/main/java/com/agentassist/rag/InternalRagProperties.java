@@ -6,15 +6,11 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Configuration for the IN-APP agent-assist RAG lane (copied from
- * bravishma-rag; see package docs on the service classes). Defaults mirror the
- * values that lane ran with in production: topK 3, vectorScore 0.3,
- * minRelevanceScore 0.55, chunks 300/50.
- *
- * <p>The Qdrant server/collection default to the EXISTING shared collection so
- * every document uploaded through the old service keeps working — isolation
- * inside it is by the {@code useCase="agent_assist"} payload tag, exactly as
- * before. Embeddings are pinned to Ollama's mxbai-embed-large because the
- * stored vectors were produced with it.</p>
+ * bravishma-rag; see package docs on the service classes). Isolation inside the
+ * collection is by the {@code useCase="agent_assist"} payload tag. Embeddings
+ * default to OpenAI (see {@link Embedding}); minRelevanceScore is tuned per
+ * embedding model in application.yaml (0.40 for OpenAI, 0.55 for mxbai).
+ * File-storage settings live on FileStorageService via @Value.
  */
 @Data
 @Configuration
@@ -38,8 +34,6 @@ public class InternalRagProperties {
     private double minRelevanceScore = 0.55;
 
     private Chunk chunk = new Chunk();
-
-    private FileStorage fileStorage = new FileStorage();
 
     @Data
     public static class Qdrant {
@@ -73,11 +67,5 @@ public class InternalRagProperties {
     public static class Chunk {
         private int size = 300;
         private int overlap = 50;
-    }
-
-    @Data
-    public static class FileStorage {
-        private String path = "./agent-assist-files";
-        private boolean enabled = true;
     }
 }

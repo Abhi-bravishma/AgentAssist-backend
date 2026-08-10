@@ -83,23 +83,6 @@ public class AnalysisService {
         return aiProviderFactory.active().analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType);
     }
 
-    public AiAnalysisResult analyzeText(String englishText) {
-        return aiProviderFactory.active().analyzeText(englishText);
-    }
-
-    public double computeOverallSentimentScore(List<String> englishUserMessages) {
-        if (englishUserMessages == null || englishUserMessages.isEmpty()) return 0.0;
-        return aiProviderFactory.active().computeOverallSentiment(englishUserMessages);
-    }
-
-    public List<String> generateSuggestionsEnglish(String englishContext) {
-        return analyzeText(englishContext).getSuggestions();
-    }
-
-    public String summarizeEnglish(String englishContext) {
-        return analyzeText(englishContext).getSummary();
-    }
-
 
     // -------------------------------------------------------------------------------------
     // REPLY-STYLE SUGGESTIONS (English + User Lang)
@@ -157,42 +140,8 @@ public class AnalysisService {
     ) {}
 
     /**
-     * Build reply suggestions using RAG (Retrieval Augmented Generation).
-     * Fetches suggestions from the external RAG application which uses
-     * uploaded documents as context.
-     *
-     * @param interactionId The conversation interaction ID
-     * @return Result containing suggestions and knowledge sources used
-     */
-    public RagSuggestionsResult buildReplySuggestionsWithRag(String interactionId) {
-        var all = messageService.fetchByInteraction(interactionId);
-        return buildReplySuggestionsWithRag(all);
-    }
-
-    /**
-     * Build reply suggestions using RAG with pre-fetched messages.
-     * This avoids re-fetching messages which can cause transaction isolation issues.
-     *
-     * @param messages The list of messages (already fetched within same transaction)
-     * @return Result containing suggestions and knowledge sources used
-     */
-    public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages) {
-        return buildReplySuggestionsWithRag(messages, null);
-    }
-
-    /**
-     * Build reply suggestions using RAG with pre-fetched messages and policy context.
-     *
-     * @param messages      The list of messages (already fetched within same transaction)
-     * @param policyContext Customer policy data context from Salesforce (optional)
-     * @return Result containing suggestions and knowledge sources used
-     */
-    public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages, String policyContext) {
-        return buildReplySuggestionsWithRag(messages, policyContext, null);
-    }
-
-    /**
      * Build reply suggestions using RAG with pre-fetched messages, policy context, and project filtering.
+     * Messages are passed in pre-fetched to avoid transaction isolation issues.
      *
      * @param messages      The list of messages (already fetched within same transaction)
      * @param policyContext Customer policy data context from Salesforce (optional)
@@ -339,9 +288,6 @@ public class AnalysisService {
     // -------------------------------------------------------------------------------------
     // REGENERATE SUGGESTIONS
     // -------------------------------------------------------------------------------------
-    public List<SuggestedResponse> regenerateSuggestions(String interactionId, String previousSuggestion) {
-        return regenerateSuggestions(interactionId, previousSuggestion, null, null);
-    }
 
     /**
      * Regenerate suggestions with optional checklist context.

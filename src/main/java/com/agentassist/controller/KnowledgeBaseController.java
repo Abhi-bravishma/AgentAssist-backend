@@ -62,11 +62,6 @@ public class KnowledgeBaseController {
 
         try {
             RagDocumentUploadResponse response = ragClient.uploadDocuments(files, category, projectName);
-
-            if (response.getFailedFiles() > 0) {
-                return ResponseEntity.ok(response); // Partial success
-            }
-
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Failed to upload documents", e);
@@ -245,43 +240,6 @@ public class KnowledgeBaseController {
             log.error("Failed to download document", e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Failed to download document: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * Get the direct download URL for a document (for frontend to use directly).
-     */
-    @Operation(
-            summary = "Get download URL",
-            description = "Get the direct URL to download a document from the RAG service"
-    )
-    @GetMapping("/documents/url/{fileName}")
-    public ResponseEntity<?> getDocumentUrl(@PathVariable String fileName) {
-        log.info("GET /api/v1/knowledge-base/documents/url/{}", fileName);
-
-        if (!ragClient.isEnabled()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Knowledge base integration is not enabled"));
-        }
-
-        try {
-            String decodedFileName = java.net.URLDecoder.decode(fileName, java.nio.charset.StandardCharsets.UTF_8);
-            String url = ragClient.getDocumentDownloadUrl(decodedFileName);
-
-            if (url == null) {
-                return ResponseEntity.status(500)
-                        .body(Map.of("error", "Could not generate download URL"));
-            }
-
-            return ResponseEntity.ok(Map.of(
-                    "fileName", decodedFileName,
-                    "downloadUrl", url
-            ));
-
-        } catch (Exception e) {
-            log.error("Failed to get document URL", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to get document URL: " + e.getMessage()));
         }
     }
 

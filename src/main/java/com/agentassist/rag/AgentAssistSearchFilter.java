@@ -52,17 +52,6 @@ public class AgentAssistSearchFilter {
      */
     private String projectName;
 
-    /** True if any pre-filter is set. */
-    public boolean hasPreFilters() {
-        return (fileNames != null && !fileNames.isEmpty())
-                || (categories != null && !categories.isEmpty())
-                || dateFrom != null
-                || dateTo != null
-                || (sourceType != null && !sourceType.isEmpty())
-                || (useCase != null && !useCase.isEmpty())
-                || (projectName != null && !projectName.isEmpty());
-    }
-
     /** True if any date filter is set. */
     public boolean hasDateFilter() {
         return dateFrom != null || dateTo != null;

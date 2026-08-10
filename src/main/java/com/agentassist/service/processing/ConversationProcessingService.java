@@ -17,8 +17,6 @@ import com.agentassist.service.checklist.ChecklistService;
 import com.agentassist.service.checklist.ChecklistService.ChecklistContext;
 import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
-import com.agentassist.service.salesforce.PolicyCacheService;
-import com.agentassist.service.salesforce.SalesforceClient;
 import com.agentassist.service.translation.LanguageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,8 +60,6 @@ public class ConversationProcessingService {
     private final MessageService messageService;
     private final LanguageService languageService;
     private final AnalysisService analysisService;
-    private final SalesforceClient salesforceClient;
-    private final PolicyCacheService policyCacheService;
     private final ChecklistService checklistService;
     private final ChecklistCacheService checklistCacheService;
     private final PromptService promptService;
@@ -91,10 +87,6 @@ public class ConversationProcessingService {
         List<String> englishConversation;
         List<String> originalConversation;
 
-        // Policy data - NOT fetched automatically on first message. Salesforce is
-        // only called when needed (fee waiver, home loan via checklist).
-        CustomerPolicyData policyData;
-
         ChecklistContext checklistContext;
         ChecklistContext currentMessageContext;
         boolean useChecklistForThisMessage;
@@ -115,22 +107,6 @@ public class ConversationProcessingService {
             this.mobileNumber = mobileNumber;
             this.projectName = projectName;
         }
-    }
-
-    /**
-     * Process message without mobile number (backward compatible).
-     */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ConversationResponse processMessage(String interactionId, String from, String messageText) {
-        return processMessage(interactionId, from, messageText, null, null);
-    }
-
-    /**
-     * Process message with optional mobile number for Salesforce policy lookup (backward compatible).
-     */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber) {
-        return processMessage(interactionId, from, messageText, mobileNumber, null);
     }
 
     /**
@@ -279,7 +255,7 @@ public class ConversationProcessingService {
         if (ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
             salesforceContext = ctx.checklistContext.getFullContext();
         }
-        ctx.policyContext = ctx.policyData != null ? ctx.policyData.toAiContext() : salesforceContext;
+        ctx.policyContext = salesforceContext;
 
         if (ctx.useChecklistForThisMessage && ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
             // Use checklist-aware analysis (fee waiver / home loan closure)
@@ -444,11 +420,9 @@ public class ConversationProcessingService {
     // ==================== stage 9: response assembly ====================
 
     private ConversationResponse assembleResponse(Pipeline ctx) {
-        // Get policyData from checklistContext if available
-        CustomerPolicyData effectivePolicyData = ctx.policyData;
-        if (effectivePolicyData == null && ctx.checklistContext != null && ctx.checklistContext.policyData() != null) {
-            effectivePolicyData = ctx.checklistContext.policyData();
-        }
+        // Policy data only ever arrives via the checklist context
+        CustomerPolicyData effectivePolicyData =
+                ctx.checklistContext != null ? ctx.checklistContext.policyData() : null;
 
         String customerName = null;
         if (ctx.checklistContext != null && ctx.checklistContext.creditCardData() != null) {
@@ -461,8 +435,6 @@ public class ConversationProcessingService {
             customerName = ctx.checklistContext.billingData().getCustomerName();
         } else if (ctx.checklistContext != null && ctx.checklistContext.telcoData() != null) {
             customerName = ctx.checklistContext.telcoData().getCustomerName();
-        } else if (effectivePolicyData != null) {
-            customerName = effectivePolicyData.getCustomerName();
         }
 
         int creditCardsFound = ctx.checklistContext != null && ctx.checklistContext.creditCardData() != null

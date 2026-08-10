@@ -132,23 +132,6 @@ public class FileStorageService {
     }
 
     /**
-     * Check if a file exists.
-     *
-     * @param fileName  The file name
-     * @param companyId The company ID
-     * @return true if file exists
-     */
-    public boolean exists(String fileName, Long companyId) {
-        if (!enabled) {
-            return false;
-        }
-
-        fileName = sanitizeFileName(fileName);
-        Path filePath = rootLocation.resolve(String.valueOf(companyId)).resolve(fileName);
-        return Files.exists(filePath);
-    }
-
-    /**
      * Delete a file.
      *
      * @param fileName  The file name to delete
@@ -187,32 +170,5 @@ public class FileStorageService {
     private String sanitizeFileName(String fileName) {
         // Remove any path components, keep only the file name
         return Paths.get(fileName).getFileName().toString();
-    }
-
-    /**
-     * Get the content type for a file based on extension.
-     */
-    public String getContentType(String fileName) {
-        String extension = getFileExtension(fileName).toLowerCase();
-        return switch (extension) {
-            case "pdf" -> "application/pdf";
-            case "doc" -> "application/msword";
-            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case "xls" -> "application/vnd.ms-excel";
-            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            case "ppt" -> "application/vnd.ms-powerpoint";
-            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-            case "txt" -> "text/plain";
-            case "md" -> "text/markdown";
-            case "csv" -> "text/csv";
-            default -> "application/octet-stream";
-        };
-    }
-
-    private String getFileExtension(String fileName) {
-        if (fileName == null || !fileName.contains(".")) {
-            return "";
-        }
-        return fileName.substring(fileName.lastIndexOf(".") + 1);
     }
 }

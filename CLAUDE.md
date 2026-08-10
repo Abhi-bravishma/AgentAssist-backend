@@ -64,8 +64,6 @@ Main processing flow in `ConversationProcessingService.processMessage()`:
 - `GET /api/v1/{interactionId}/sentiment/current` - Current message sentiment
 - `GET /api/v1/{interactionId}/suggestions` - Reply suggestions
 - `GET /api/v1/{interactionId}/summary` - Conversation summary
-- `GET /api/v1/conversation/{interactionId}` - Full conversation with messages
-- `GET /api/v1/knowledge-articles` - Paginated knowledge articles
 - `POST /api/v1/translate` - Translate text
 - `POST /api/v1/language/detect` - Detect language
 

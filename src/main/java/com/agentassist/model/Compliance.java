@@ -45,19 +45,11 @@ public class Compliance {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at")
-    private Instant updatedAt;
-
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
         if (checkedAt == null) {
             checkedAt = Instant.now();
         }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = Instant.now();
     }
 }

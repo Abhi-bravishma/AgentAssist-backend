@@ -13,9 +13,4 @@ public interface ComplianceRepository extends JpaRepository<Compliance, Long> {
      * Find the latest compliance check for an interaction.
      */
     Optional<Compliance> findTopByInteractionIdOrderByCheckedAtDesc(String interactionId);
-
-    /**
-     * Check if a compliance check exists for an interaction.
-     */
-    boolean existsByInteractionId(String interactionId);
 }
