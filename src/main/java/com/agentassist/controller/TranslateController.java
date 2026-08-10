@@ -2,7 +2,7 @@ package com.agentassist.controller;
 
 import com.agentassist.dto.requestDTO.TranslateToTargetRequest;
 import com.agentassist.dto.responseDTO.TranslationResponse;
-import com.agentassist.service.translation.TranslationService;
+import com.agentassist.service.translation.LanguageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class TranslateController {
 
-    private final TranslationService translationService;
+    private final LanguageService languageService;
 
     @PostMapping("")
     public ResponseEntity<TranslationResponse> toTarget(@Valid @RequestBody TranslateToTargetRequest req) {
@@ -26,15 +26,15 @@ public class TranslateController {
         }
 
         // detect language
-        String detected = translationService.detect(req.getText());
+        String detected = languageService.detect(req.getText());
 
         // normalize into English
         String english = detected.equalsIgnoreCase("en")
                 ? req.getText()
-                : translationService.toEnglish(req.getText());
+                : languageService.toEnglish(req.getText());
 
         // translate from English to target
-        String translated = translationService.fromEnglish(english, req.getTargetLanguage());
+        String translated = languageService.fromEnglish(english, req.getTargetLanguage());
 
         // construct response
         TranslationResponse r = new TranslationResponse();

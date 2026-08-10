@@ -20,7 +20,6 @@ import com.agentassist.service.conversation.MessageService;
 import com.agentassist.service.salesforce.PolicyCacheService;
 import com.agentassist.service.salesforce.SalesforceClient;
 import com.agentassist.service.translation.LanguageService;
-import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -61,7 +60,7 @@ public class ConversationProcessingService {
 
     private final ConversationService conversationService;
     private final MessageService messageService;
-    private final TranslationService translationService;
+    private final LanguageService languageService;
     private final AnalysisService analysisService;
     private final SalesforceClient salesforceClient;
     private final PolicyCacheService policyCacheService;
@@ -166,7 +165,7 @@ public class ConversationProcessingService {
 
     private void detectLanguage(Pipeline ctx) {
         log.debug("[Process] Step 1: Detecting language...");
-        ctx.detectedLang = translationService.detect(ctx.messageText);
+        ctx.detectedLang = languageService.detect(ctx.messageText);
         ctx.isCustomer = "customer".equalsIgnoreCase(ctx.from);
         log.info("[Process] Language detected: {}, isCustomer: {}", ctx.detectedLang, ctx.isCustomer);
     }
@@ -199,7 +198,7 @@ public class ConversationProcessingService {
 
     private void translateAndSave(Pipeline ctx) {
         log.debug("[Process] Step 3: Translating to English...");
-        ctx.english = translationService.toEnglish(ctx.messageText);
+        ctx.english = languageService.toEnglish(ctx.messageText);
         log.debug("[Process] English translation length: {}", ctx.english.length());
 
         log.debug("[Process] Step 4: Saving message to DB...");
@@ -338,7 +337,7 @@ public class ConversationProcessingService {
         SuggestedResponse sr = new SuggestedResponse();
         sr.setEnglishReply(filteredIntentMessage);
         if (!ctx.replyLang.equalsIgnoreCase("en")) {
-            sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, ctx.replyLang));
+            sr.setUserLanguageReply(languageService.fromEnglish(filteredIntentMessage, ctx.replyLang));
         }
         ctx.suggestions = Collections.singletonList(sr);
         ctx.knowledgeSources = Collections.emptyList();
@@ -507,7 +506,7 @@ public class ConversationProcessingService {
                     SuggestedResponse sr = new SuggestedResponse();
                     sr.setEnglishReply(s);
                     if (!isEnglishUser) {
-                        sr.setUserLanguageReply(translationService.fromEnglish(s, detectedLang));
+                        sr.setUserLanguageReply(languageService.fromEnglish(s, detectedLang));
                     }
                     return sr;
                 }).toList();

@@ -40,6 +40,11 @@ public class LanguageService {
         return aiProviderFactory.active().detectLanguage(text);
     }
 
+    /** Alias kept from the collapsed TranslationService (Part 3c). */
+    public String detect(String text) {
+        return detectLanguage(text);
+    }
+
     public String toEnglish(String text) {
         return aiProviderFactory.active().translateToEnglish(text);
     }

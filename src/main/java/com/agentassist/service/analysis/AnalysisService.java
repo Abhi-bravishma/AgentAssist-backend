@@ -15,7 +15,6 @@ import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
 import com.agentassist.rag.RagGateway;
 import com.agentassist.service.translation.LanguageService;
-import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,7 +30,7 @@ public class AnalysisService {
 
     private final AiProviderFactory aiProviderFactory;
     private final MessageService messageService;
-    private final TranslationService translationService;
+    private final LanguageService languageService;
     private final RagGateway ragClient;
     private final ConversationService conversationService;
 
@@ -133,7 +132,7 @@ public class AnalysisService {
 
                     if (!isEnglish) {
                         sr.setUserLanguageReply(
-                                translationService.fromEnglish(s, lang)
+                                languageService.fromEnglish(s, lang)
                         );
                     }
 
@@ -263,7 +262,7 @@ public class AnalysisService {
 
                 // Only set userLanguageReply if not English (avoid duplication)
                 if (!isEnglish) {
-                    sr.setUserLanguageReply(translationService.fromEnglish(suggestion, lang));
+                    sr.setUserLanguageReply(languageService.fromEnglish(suggestion, lang));
                 }
                 // When English, userLanguageReply stays null
                 suggestions.add(sr);
@@ -390,7 +389,7 @@ public class AnalysisService {
 
                     if (!isEnglish) {
                         sr.setUserLanguageReply(
-                                translationService.fromEnglish(s, lang)
+                                languageService.fromEnglish(s, lang)
                         );
                     }
 
