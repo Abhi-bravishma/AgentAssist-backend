@@ -198,7 +198,15 @@ public class ConversationProcessingService {
 
     private void translateAndSave(Pipeline ctx) {
         log.debug("[Process] Step 3: Translating to English...");
-        ctx.english = languageService.toEnglish(ctx.messageText);
+        if ("en".equalsIgnoreCase(ctx.detectedLang)) {
+            // Already English: skip the translation LLM call and keep the
+            // customer's verbatim words. "und" still goes through translation -
+            // detection failed, so we cannot assume anything about the text.
+            ctx.english = ctx.messageText;
+            log.debug("[Process] Message already English - translation skipped");
+        } else {
+            ctx.english = languageService.toEnglish(ctx.messageText);
+        }
         log.debug("[Process] English translation length: {}", ctx.english.length());
 
         log.debug("[Process] Step 4: Saving message to DB...");
