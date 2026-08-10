@@ -30,6 +30,29 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Main message-processing pipeline (Part 3a restructure).
+ *
+ * <p>{@link #processMessage(String, String, String, String, String)} runs a
+ * fixed sequence of stages, each a private method that reads and writes a
+ * shared per-request {@link Pipeline} state object:
+ *
+ * <ol>
+ *   <li>{@link #detectLanguage} — language of the incoming text</li>
+ *   <li>{@link #initConversation} — get/create conversation, set base language</li>
+ *   <li>{@link #translateAndSave} — English translation + persist the message</li>
+ *   <li>{@link #loadHistory} — conversation history (English + original)</li>
+ *   <li>{@link #resolveChecklist} — intent detection, checklist cache, project gating</li>
+ *   <li>{@link #analyze} — AI sentiment/summary/suggestion bundle</li>
+ *   <li>{@link #updateMessageSentiment} — persist current-message sentiment</li>
+ *   <li>{@link #buildSuggestions} — dispatch to one of the suggestion branches</li>
+ *   <li>{@link #assembleResponse} — response DTO</li>
+ * </ol>
+ *
+ * <p>Part 3a is behavior-preserving: every stage body was moved VERBATIM from
+ * the old monolithic method; only the structure changed. Behaviour changes
+ * (language fixes §4.9–4.11) land as separate commits on top.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -45,6 +68,52 @@ public class ConversationProcessingService {
     private final ChecklistCacheService checklistCacheService;
     private final PromptService promptService;
     private final IntentRegistryService intentRegistryService;
+
+    /**
+     * Mutable per-request state threaded through the pipeline stages.
+     * Package-private for tests.
+     */
+    static final class Pipeline {
+        final String interactionId;
+        final String from;
+        final String messageText;
+        final String mobileNumber;
+        final String projectName;
+
+        boolean isCustomer;
+        String detectedLang;
+        String english;
+        MessageEntity saved;
+
+        List<MessageEntity> all;
+        List<String> englishConversation;
+        List<String> originalConversation;
+
+        // Policy data - NOT fetched automatically on first message. Salesforce is
+        // only called when needed (fee waiver, home loan via checklist).
+        CustomerPolicyData policyData;
+
+        ChecklistContext checklistContext;
+        ChecklistContext currentMessageContext;
+        boolean useChecklistForThisMessage;
+
+        String policyContext;
+        AiAnalysisBundle bundle;
+
+        List<SuggestedResponse> suggestions;
+        List<KnowledgeSource> knowledgeSources;
+        int documentsFound;
+        boolean usedKnowledgeBase;
+
+        Pipeline(String interactionId, String from, String messageText,
+                 String mobileNumber, String projectName) {
+            this.interactionId = interactionId;
+            this.from = from;
+            this.messageText = messageText;
+            this.mobileNumber = mobileNumber;
+            this.projectName = projectName;
+        }
+    }
 
     /**
      * Process message without mobile number (backward compatible).
@@ -72,260 +141,312 @@ public class ConversationProcessingService {
                 projectName != null ? projectName : "ALL");
         long startTime = System.currentTimeMillis();
 
-        // 1. Detect language
+        Pipeline ctx = new Pipeline(interactionId, from, messageText, mobileNumber, projectName);
+
+        detectLanguage(ctx);
+        initConversation(ctx);
+        translateAndSave(ctx);
+        loadHistory(ctx);
+        resolveChecklist(ctx);
+        analyze(ctx);
+        updateMessageSentiment(ctx);
+        buildSuggestions(ctx);
+        ConversationResponse resp = assembleResponse(ctx);
+
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("[Process] Message processing completed in {}ms", duration);
+
+        return resp;
+    }
+
+    // ==================== stage 1: language detection ====================
+
+    private void detectLanguage(Pipeline ctx) {
         log.debug("[Process] Step 1: Detecting language...");
-        String detectedLang = translationService.detect(messageText);
-        boolean isCustomer = "customer".equalsIgnoreCase(from);
-        log.info("[Process] Language detected: {}, isCustomer: {}", detectedLang, isCustomer);
+        ctx.detectedLang = translationService.detect(ctx.messageText);
+        ctx.isCustomer = "customer".equalsIgnoreCase(ctx.from);
+        log.info("[Process] Language detected: {}, isCustomer: {}", ctx.detectedLang, ctx.isCustomer);
+    }
 
-        // 2. Initialize base language
+    // ==================== stage 2: conversation + base language ====================
+
+    private void initConversation(Pipeline ctx) {
         log.debug("[Process] Step 2: Getting/creating conversation...");
-        var conv = conversationService.getOrCreate(interactionId);
-        if (isCustomer && (conv.getBaseLanguage() == null || conv.getBaseLanguage().isBlank())) {
-            conversationService.setBaseLanguage(interactionId, detectedLang);
-            log.info("[Process] Set base language to: {}", detectedLang);
+        var conv = conversationService.getOrCreate(ctx.interactionId);
+        if (ctx.isCustomer && (conv.getBaseLanguage() == null || conv.getBaseLanguage().isBlank())) {
+            conversationService.setBaseLanguage(ctx.interactionId, ctx.detectedLang);
+            log.info("[Process] Set base language to: {}", ctx.detectedLang);
         }
+    }
 
-        // 3. Convert to English for AI
+    // ==================== stage 3+4: translate + persist ====================
+
+    private void translateAndSave(Pipeline ctx) {
         log.debug("[Process] Step 3: Translating to English...");
-        String english = translationService.toEnglish(messageText);
-        log.debug("[Process] English translation length: {}", english.length());
+        ctx.english = translationService.toEnglish(ctx.messageText);
+        log.debug("[Process] English translation length: {}", ctx.english.length());
 
-        // 4. Save raw message
         log.debug("[Process] Step 4: Saving message to DB...");
-        MessageEntity saved = messageService.save(
+        ctx.saved = messageService.save(
                 MessageEntity.builder()
-                        .interactionId(interactionId)
-                        .sender(isCustomer ? SenderType.customer : SenderType.user)
-                        .originalText(messageText)
-                        .originalLanguage(detectedLang)
-                        .englishText(english)
+                        .interactionId(ctx.interactionId)
+                        .sender(ctx.isCustomer ? SenderType.customer : SenderType.user)
+                        .originalText(ctx.messageText)
+                        .originalLanguage(ctx.detectedLang)
+                        .englishText(ctx.english)
                         .build()
         );
-        log.info("[Process] Message saved with ID: {}", saved.getId());
+        log.info("[Process] Message saved with ID: {}", ctx.saved.getId());
+    }
 
-        // 5. Build conversation histories (English + Original for multi-language detection)
+    // ==================== stage 5: history ====================
+
+    private void loadHistory(Pipeline ctx) {
         log.debug("[Process] Step 5: Building conversation history...");
-        List<MessageEntity> all = messageService.fetchByInteraction(interactionId);
-//        List<String> englishConversation = all.stream().map(MessageEntity::getEnglishText).toList();
-//        List<String> originalConversation = all.stream().map(MessageEntity::getOriginalText).toList();
+        ctx.all = messageService.fetchByInteraction(ctx.interactionId);
 
-        List<String> englishConversation = all.stream()
+        ctx.englishConversation = ctx.all.stream()
                 .map(m -> m.getSender().name().equalsIgnoreCase("user") ? "agent" : m.getSender() + " : " + m.getEnglishText())
                 .toList();
-        List<String> originalConversation = all.stream()
+        ctx.originalConversation = ctx.all.stream()
                 .map(m -> m.getSender().name().equalsIgnoreCase("user") ? "agent" : m.getSender() + " : " + m.getOriginalText())
                 .toList();
 
-        log.info("[Process] Conversation has {} messages", englishConversation.size());
+        log.info("[Process] Conversation has {} messages", ctx.englishConversation.size());
+    }
 
-        // 5.5 Policy data - NOT fetched automatically on first message
-        // Salesforce is only called when needed (fee waiver, home loan via checklist)
-        CustomerPolicyData policyData = null;
+    // ==================== stage 5.6: checklist / intent ====================
 
-        // 5.6 Detect and build checklist context (fee waiver, home loan closure)
+    private void resolveChecklist(Pipeline ctx) {
         log.debug("[Process] Step 5.6: Checking for checklist operations...");
-        ChecklistContext checklistContext = checklistCacheService.get(interactionId);
-        boolean checklistDetectedThisMessage = false;
-        boolean useChecklistForThisMessage = false;
+        ctx.checklistContext = checklistCacheService.get(ctx.interactionId);
+        ctx.useChecklistForThisMessage = false;
 
         // Always detect intent for current message (filtered by projectName)
         // METRO: FEE_WAIVER, HOME_LOAN_CLOSURE | ALLIANZ: POLICY, CLAIMS | null: ALL
-        ChecklistContext currentMessageContext = checklistService.buildChecklistContext(englishConversation, originalConversation, mobileNumber, projectName);
-        String currentIntent = currentMessageContext.operationType();
-        log.info("[Process] Current message intent: {} (project: {})", currentIntent, projectName != null ? projectName : "ALL");
+        ctx.currentMessageContext = checklistService.buildChecklistContext(
+                ctx.englishConversation, ctx.originalConversation, ctx.mobileNumber, ctx.projectName);
+        String currentIntent = ctx.currentMessageContext.operationType();
+        log.info("[Process] Current message intent: {} (project: {})", currentIntent,
+                ctx.projectName != null ? ctx.projectName : "ALL");
 
         if (!IntentCodes.NONE.equals(currentIntent)) {
             // Current message is fee waiver or home loan - use checklist flow
-            checklistContext = currentMessageContext;
-            checklistCacheService.put(interactionId, checklistContext);
-            checklistDetectedThisMessage = true;
-            useChecklistForThisMessage = true;
+            ctx.checklistContext = ctx.currentMessageContext;
+            checklistCacheService.put(ctx.interactionId, ctx.checklistContext);
+            ctx.useChecklistForThisMessage = true;
             log.info("[Process] Checklist operation detected: {}, hasCustomerData: {}",
-                    checklistContext.operationType(), checklistContext.hasContext());
-        } else if (checklistContext != null && checklistContext.hasContext()) {
+                    ctx.checklistContext.operationType(), ctx.checklistContext.hasContext());
+        } else if (ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
             // Current message is GENERAL but we have cached Salesforce data
             // Use cached data as context but NOT the checklist-specific prompt
             log.info("[Process] Using cached Salesforce data for GENERAL query (cached operation: {})",
-                    checklistContext.operationType());
-            useChecklistForThisMessage = false; // Don't use checklist prompt
+                    ctx.checklistContext.operationType());
+            ctx.useChecklistForThisMessage = false; // Don't use checklist prompt
         }
+    }
 
-        // 6. Call AI with appropriate context
+    // ==================== stage 6: AI analysis ====================
+
+    private void analyze(Pipeline ctx) {
         log.debug("[Process] Step 6: Calling AI for analysis...");
-        AiAnalysisBundle bundle;
 
         // Build context from cached Salesforce data if available
         String salesforceContext = null;
-        if (checklistContext != null && checklistContext.hasContext()) {
-            salesforceContext = checklistContext.getFullContext();
+        if (ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
+            salesforceContext = ctx.checklistContext.getFullContext();
         }
-        String policyContext = policyData != null ? policyData.toAiContext() : salesforceContext;
+        ctx.policyContext = ctx.policyData != null ? ctx.policyData.toAiContext() : salesforceContext;
 
-        if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
+        if (ctx.useChecklistForThisMessage && ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
             // Use checklist-aware analysis (fee waiver / home loan closure)
-            log.info("[Process] Using checklist-aware AI analysis for: {}", checklistContext.operationType());
-            bundle = analysisService.analyzeConversationWithChecklist(
-                    englishConversation, english,
-                    checklistContext.getFullContext(),
-                    checklistContext.operationType());
+            log.info("[Process] Using checklist-aware AI analysis for: {}", ctx.checklistContext.operationType());
+            ctx.bundle = analysisService.analyzeConversationWithChecklist(
+                    ctx.englishConversation, ctx.english,
+                    ctx.checklistContext.getFullContext(),
+                    ctx.checklistContext.operationType());
         } else {
             // Standard analysis - use cached Salesforce data if available
-            log.info("[Process] Using standard AI analysis with context: {}", policyContext != null ? "yes" : "no");
-            bundle = analysisService.analyzeConversationWithContext(
-                    englishConversation, english, policyContext);
+            log.info("[Process] Using standard AI analysis with context: {}", ctx.policyContext != null ? "yes" : "no");
+            ctx.bundle = analysisService.analyzeConversationWithContext(
+                    ctx.englishConversation, ctx.english, ctx.policyContext);
         }
 
         log.info("[Process] AI analysis complete - overall: {}, current: {}, usedChecklist: {}",
-                bundle.getOverall_sentiment_score(), bundle.getCurrent_sentiment_score(),
-                checklistContext != null && checklistContext.hasContext());
+                ctx.bundle.getOverall_sentiment_score(), ctx.bundle.getCurrent_sentiment_score(),
+                ctx.checklistContext != null && ctx.checklistContext.hasContext());
+    }
 
-        // 7. Update last message sentiment
-        if (isCustomer) {
-            saved.setSentiment(bundle.getCurrent_sentiment_label());
-            saved.setSentimentScore(bundle.getCurrent_sentiment_score());
-            messageService.save(saved);
+    // ==================== stage 7: message sentiment ====================
+
+    private void updateMessageSentiment(Pipeline ctx) {
+        if (ctx.isCustomer) {
+            ctx.saved.setSentiment(ctx.bundle.getCurrent_sentiment_label());
+            ctx.saved.setSentimentScore(ctx.bundle.getCurrent_sentiment_score());
+            messageService.save(ctx.saved);
             log.debug("[Process] Updated message sentiment: {} ({})",
-                    bundle.getCurrent_sentiment_label(), bundle.getCurrent_sentiment_score());
+                    ctx.bundle.getCurrent_sentiment_label(), ctx.bundle.getCurrent_sentiment_score());
         }
+    }
 
-        // 8. Build suggestions (only for customer messages, not agent messages)
+    // ==================== stage 8: suggestions (branch dispatch) ====================
+
+    private void buildSuggestions(Pipeline ctx) {
         log.debug("[Process] Step 7: Building suggestions...");
-        List<SuggestedResponse> suggestions;
-        List<KnowledgeSource> knowledgeSources;
-        int documentsFound = 0;
-        boolean usedKnowledgeBase = false;
+        ctx.documentsFound = 0;
+        ctx.usedKnowledgeBase = false;
 
         // Skip suggestions for agent messages - only process customer messages
-        if (!isCustomer) {
+        if (!ctx.isCustomer) {
             log.info("[Process] Skipping suggestions for agent message");
-            suggestions = Collections.emptyList();
-            knowledgeSources = Collections.emptyList();
-        } else if (currentMessageContext.wasIntentFiltered()) {
-            // Intent was detected but filtered out due to project mismatch
-            // Provide helpful message instead of going to RAG
-            log.info("[Process] Intent {} was filtered for project {}, providing helpful message",
-                    currentMessageContext.filteredIntent(), projectName);
-            String filteredIntentMessage =
-                    intentRegistryService.filteredMessage(currentMessageContext.filteredIntent(), projectName);
-            SuggestedResponse sr = new SuggestedResponse();
-            sr.setEnglishReply(filteredIntentMessage);
-            if (!detectedLang.equalsIgnoreCase("en")) {
-                sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, detectedLang));
-            }
-            suggestions = Collections.singletonList(sr);
-            knowledgeSources = Collections.emptyList();
-        } else if (useChecklistForThisMessage && checklistContext != null && checklistContext.hasContext()) {
-            // CUSTOMER-SPECIFIC QUERY (POLICY/CLAIMS/FEE_WAIVER/HOME_LOAN_CLOSURE with Salesforce data)
-            // KNOWLEDGE BASE FIRST: when the FAQ has a document matching this question,
-            // answer from the document. The checklist answer (GPT + Salesforce data) is the
-            // fallback for when the knowledge base has nothing relevant.
-            boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
+            ctx.suggestions = Collections.emptyList();
+            ctx.knowledgeSources = Collections.emptyList();
+        } else if (ctx.currentMessageContext.wasIntentFiltered()) {
+            filteredIntentSuggestion(ctx);
+        } else if (ctx.useChecklistForThisMessage && ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
+            checklistSuggestions(ctx);
+        } else {
+            generalSuggestions(ctx);
+        }
+    }
 
-            // A billing question can only be answered from the customer's own record - no
-            // FAQ document knows their balance - so the knowledge base never overrides it.
-            // Documents are still fetched for the knowledge-source chips.
-            boolean customerDataOnly = IntentCodes.BILLING.equals(checklistContext.operationType());
+    /**
+     * Intent was detected but filtered out due to project mismatch.
+     * Provide helpful message instead of going to RAG.
+     */
+    private void filteredIntentSuggestion(Pipeline ctx) {
+        log.info("[Process] Intent {} was filtered for project {}, providing helpful message",
+                ctx.currentMessageContext.filteredIntent(), ctx.projectName);
+        String filteredIntentMessage =
+                intentRegistryService.filteredMessage(ctx.currentMessageContext.filteredIntent(), ctx.projectName);
+        SuggestedResponse sr = new SuggestedResponse();
+        sr.setEnglishReply(filteredIntentMessage);
+        if (!ctx.detectedLang.equalsIgnoreCase("en")) {
+            sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, ctx.detectedLang));
+        }
+        ctx.suggestions = Collections.singletonList(sr);
+        ctx.knowledgeSources = Collections.emptyList();
+    }
 
-            // Checklist answer - built up front so it is ready as the fallback
-            List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
+    /**
+     * CUSTOMER-SPECIFIC QUERY (POLICY/CLAIMS/FEE_WAIVER/HOME_LOAN_CLOSURE with Salesforce data).
+     * KNOWLEDGE BASE FIRST: when the FAQ has a document matching this question,
+     * answer from the document. The checklist answer (GPT + Salesforce data) is the
+     * fallback for when the knowledge base has nothing relevant.
+     */
+    private void checklistSuggestions(Pipeline ctx) {
+        boolean isSimpleMessage = isGreetingOrSimpleMessage(ctx.english);
 
-            if (analysisService.isRagEnabled() && !isSimpleMessage) {
-                var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
-                documentsFound = ragResult.documentsFound();
-                knowledgeSources = ragResult.knowledgeSources();
-                usedKnowledgeBase = ragResult.usedKnowledgeBase();
+        // A billing question can only be answered from the customer's own record - no
+        // FAQ document knows their balance - so the knowledge base never overrides it.
+        // Documents are still fetched for the knowledge-source chips.
+        boolean customerDataOnly = IntentCodes.BILLING.equals(ctx.checklistContext.operationType());
 
-                if (!customerDataOnly && documentsFound > 0 && !ragResult.suggestions().isEmpty()) {
-                    suggestions = ragResult.suggestions();
-                    log.info("[Process] Using KNOWLEDGE BASE suggestion for {} ({} documents matched)",
-                            checklistContext.operationType(), documentsFound);
-                } else {
-                    suggestions = checklistSuggestions;
-                    log.info("[Process] Knowledge base found nothing for {}, using CHECKLIST suggestion",
-                            checklistContext.operationType());
-                }
+        // Checklist answer - built up front so it is ready as the fallback
+        List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+
+        if (analysisService.isRagEnabled() && !isSimpleMessage) {
+            var ragResult = analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+            ctx.documentsFound = ragResult.documentsFound();
+            ctx.knowledgeSources = ragResult.knowledgeSources();
+            ctx.usedKnowledgeBase = ragResult.usedKnowledgeBase();
+
+            if (!customerDataOnly && ctx.documentsFound > 0 && !ragResult.suggestions().isEmpty()) {
+                ctx.suggestions = ragResult.suggestions();
+                log.info("[Process] Using KNOWLEDGE BASE suggestion for {} ({} documents matched)",
+                        ctx.checklistContext.operationType(), ctx.documentsFound);
             } else {
-                suggestions = checklistSuggestions;
-                knowledgeSources = Collections.emptyList();
-                log.info("[Process] Using CHECKLIST suggestion for {} (knowledge base skipped)",
-                        checklistContext.operationType());
+                ctx.suggestions = checklistSuggestions;
+                log.info("[Process] Knowledge base found nothing for {}, using CHECKLIST suggestion",
+                        ctx.checklistContext.operationType());
             }
         } else {
-            // GENERAL QUERY - Always use RAG for knowledge base lookup
-            // Even if we have cached Salesforce data, RAG should be called for general questions
-            // Skip RAG for greetings and simple messages - no need for knowledge base lookup
-            boolean isSimpleMessage = isGreetingOrSimpleMessage(english);
-
-            if (analysisService.isRagEnabled() && !isSimpleMessage) {
-                // Use RAG for suggestions with knowledge base context + policy data
-                log.info("[Process] Using RAG for suggestions with {} messages, projectName: {}...", all.size(), projectName);
-                var ragResult = analysisService.buildReplySuggestionsWithRag(all, policyContext, projectName);
-                suggestions = ragResult.suggestions();
-                knowledgeSources = ragResult.knowledgeSources();
-                documentsFound = ragResult.documentsFound();
-                usedKnowledgeBase = ragResult.usedKnowledgeBase();
-                log.info("[Process] RAG returned {} suggestions, {} knowledge sources",
-                        suggestions.size(), knowledgeSources.size());
-
-                // Knowledge base found nothing usable. Only fall back to the AI answer when
-                // there is real customer data behind it - otherwise the model has nothing to
-                // ground on and will invent figures (it quoted a 10% discount for a document
-                // that says 25%). An honest "I don't know" beats a confident wrong number.
-                if (documentsFound == 0 || suggestions.isEmpty()) {
-                    boolean hasCustomerData = checklistContext != null && checklistContext.hasContext();
-                    if (hasCustomerData && !bundle.getSuggestions().isEmpty()) {
-                        log.info("[Process] Knowledge base found nothing, using AI suggestions grounded in customer data");
-                        suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
-                    } else {
-                        log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
-                        suggestions = toSuggestedResponses(List.of(
-                                promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
-                                detectedLang);
-                    }
-                }
-            } else if (isSimpleMessage) {
-                // Skip RAG for greetings - use AI suggestions directly
-                log.info("[Process] Simple message detected, skipping RAG...");
-                suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
-                knowledgeSources = Collections.emptyList();
-                log.info("[Process] Generated {} suggestions (skipped RAG for simple message)", suggestions.size());
-            } else {
-                // Fallback to AI-based suggestions without RAG
-                log.info("[Process] RAG disabled, using AI for suggestions...");
-                suggestions = toSuggestedResponses(bundle.getSuggestions(), detectedLang);
-                knowledgeSources = Collections.emptyList();
-                log.info("[Process] Generated {} suggestions (no RAG)", suggestions.size());
-            }
+            ctx.suggestions = checklistSuggestions;
+            ctx.knowledgeSources = Collections.emptyList();
+            log.info("[Process] Using CHECKLIST suggestion for {} (knowledge base skipped)",
+                    ctx.checklistContext.operationType());
         }
+    }
 
-        // 9. Build response with policy data and checklist info
+    /**
+     * GENERAL QUERY - Always use RAG for knowledge base lookup.
+     * Even if we have cached Salesforce data, RAG should be called for general questions.
+     * Skip RAG for greetings and simple messages - no need for knowledge base lookup.
+     */
+    private void generalSuggestions(Pipeline ctx) {
+        boolean isSimpleMessage = isGreetingOrSimpleMessage(ctx.english);
+
+        if (analysisService.isRagEnabled() && !isSimpleMessage) {
+            // Use RAG for suggestions with knowledge base context + policy data
+            log.info("[Process] Using RAG for suggestions with {} messages, projectName: {}...", ctx.all.size(), ctx.projectName);
+            var ragResult = analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+            ctx.suggestions = ragResult.suggestions();
+            ctx.knowledgeSources = ragResult.knowledgeSources();
+            ctx.documentsFound = ragResult.documentsFound();
+            ctx.usedKnowledgeBase = ragResult.usedKnowledgeBase();
+            log.info("[Process] RAG returned {} suggestions, {} knowledge sources",
+                    ctx.suggestions.size(), ctx.knowledgeSources.size());
+
+            // Knowledge base found nothing usable. Only fall back to the AI answer when
+            // there is real customer data behind it - otherwise the model has nothing to
+            // ground on and will invent figures (it quoted a 10% discount for a document
+            // that says 25%). An honest "I don't know" beats a confident wrong number.
+            if (ctx.documentsFound == 0 || ctx.suggestions.isEmpty()) {
+                boolean hasCustomerData = ctx.checklistContext != null && ctx.checklistContext.hasContext();
+                if (hasCustomerData && !ctx.bundle.getSuggestions().isEmpty()) {
+                    log.info("[Process] Knowledge base found nothing, using AI suggestions grounded in customer data");
+                    ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+                } else {
+                    log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
+                    ctx.suggestions = toSuggestedResponses(List.of(
+                            promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
+                            ctx.detectedLang);
+                }
+            }
+        } else if (isSimpleMessage) {
+            // Skip RAG for greetings - use AI suggestions directly
+            log.info("[Process] Simple message detected, skipping RAG...");
+            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+            ctx.knowledgeSources = Collections.emptyList();
+            log.info("[Process] Generated {} suggestions (skipped RAG for simple message)", ctx.suggestions.size());
+        } else {
+            // Fallback to AI-based suggestions without RAG
+            log.info("[Process] RAG disabled, using AI for suggestions...");
+            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+            ctx.knowledgeSources = Collections.emptyList();
+            log.info("[Process] Generated {} suggestions (no RAG)", ctx.suggestions.size());
+        }
+    }
+
+    // ==================== stage 9: response assembly ====================
+
+    private ConversationResponse assembleResponse(Pipeline ctx) {
         // Get policyData from checklistContext if available
-        CustomerPolicyData effectivePolicyData = policyData;
-        if (effectivePolicyData == null && checklistContext != null && checklistContext.policyData() != null) {
-            effectivePolicyData = checklistContext.policyData();
+        CustomerPolicyData effectivePolicyData = ctx.policyData;
+        if (effectivePolicyData == null && ctx.checklistContext != null && ctx.checklistContext.policyData() != null) {
+            effectivePolicyData = ctx.checklistContext.policyData();
         }
 
         String customerName = null;
-        if (checklistContext != null && checklistContext.creditCardData() != null) {
-            customerName = checklistContext.creditCardData().getCustomerName();
-        } else if (checklistContext != null && checklistContext.homeLoanData() != null) {
-            customerName = checklistContext.homeLoanData().getCustomerName();
-        } else if (checklistContext != null && checklistContext.policyData() != null) {
-            customerName = checklistContext.policyData().getCustomerName();
-        } else if (checklistContext != null && checklistContext.billingData() != null) {
-            customerName = checklistContext.billingData().getCustomerName();
+        if (ctx.checklistContext != null && ctx.checklistContext.creditCardData() != null) {
+            customerName = ctx.checklistContext.creditCardData().getCustomerName();
+        } else if (ctx.checklistContext != null && ctx.checklistContext.homeLoanData() != null) {
+            customerName = ctx.checklistContext.homeLoanData().getCustomerName();
+        } else if (ctx.checklistContext != null && ctx.checklistContext.policyData() != null) {
+            customerName = ctx.checklistContext.policyData().getCustomerName();
+        } else if (ctx.checklistContext != null && ctx.checklistContext.billingData() != null) {
+            customerName = ctx.checklistContext.billingData().getCustomerName();
         } else if (effectivePolicyData != null) {
             customerName = effectivePolicyData.getCustomerName();
         }
 
-        int creditCardsFound = checklistContext != null && checklistContext.creditCardData() != null
-                && checklistContext.creditCardData().getCreditCards() != null
-                ? checklistContext.creditCardData().getCreditCards().size() : 0;
+        int creditCardsFound = ctx.checklistContext != null && ctx.checklistContext.creditCardData() != null
+                && ctx.checklistContext.creditCardData().getCreditCards() != null
+                ? ctx.checklistContext.creditCardData().getCreditCards().size() : 0;
 
-        int homeLoansFound = checklistContext != null && checklistContext.homeLoanData() != null
-                && checklistContext.homeLoanData().getHomeLoans() != null
-                ? checklistContext.homeLoanData().getHomeLoans().size() : 0;
+        int homeLoansFound = ctx.checklistContext != null && ctx.checklistContext.homeLoanData() != null
+                && ctx.checklistContext.homeLoanData().getHomeLoans() != null
+                ? ctx.checklistContext.homeLoanData().getHomeLoans().size() : 0;
 
         int policiesFound = effectivePolicyData != null && effectivePolicyData.getPolicies() != null
                 ? effectivePolicyData.getPolicies().size() : 0;
@@ -333,31 +454,28 @@ public class ConversationProcessingService {
         int claimsFound = effectivePolicyData != null && effectivePolicyData.getClaims() != null
                 ? effectivePolicyData.getClaims().size() : 0;
 
-        ConversationResponse resp = ConversationResponse.builder()
-                .overallSentiment(bundle.getOverall_sentiment_score())
-                .currentSentiment(bundle.getCurrent_sentiment_score())
-                .summary(bundle.getSummary())
-                .suggestedResponses(suggestions)
-                .knowledgeSources(knowledgeSources)
-                .documentsFound(documentsFound)
-                .usedKnowledgeBase(usedKnowledgeBase)
+        return ConversationResponse.builder()
+                .overallSentiment(ctx.bundle.getOverall_sentiment_score())
+                .currentSentiment(ctx.bundle.getCurrent_sentiment_score())
+                .summary(ctx.bundle.getSummary())
+                .suggestedResponses(ctx.suggestions)
+                .knowledgeSources(ctx.knowledgeSources)
+                .documentsFound(ctx.documentsFound)
+                .usedKnowledgeBase(ctx.usedKnowledgeBase)
                 .usedPolicyData(effectivePolicyData != null)
                 .customerName(customerName)
                 .policiesFound(policiesFound)
                 .claimsFound(claimsFound)
-                .usedChecklist(checklistContext != null && checklistContext.hasContext())
-                .checklistOperation(checklistContext != null && !IntentCodes.NONE.equals(checklistContext.operationType())
-                        ? checklistContext.operationType() : null)
+                .usedChecklist(ctx.checklistContext != null && ctx.checklistContext.hasContext())
+                .checklistOperation(ctx.checklistContext != null && !IntentCodes.NONE.equals(ctx.checklistContext.operationType())
+                        ? ctx.checklistContext.operationType() : null)
                 .creditCardsFound(creditCardsFound)
                 .homeLoansFound(homeLoansFound)
-                .projectName(projectName)
+                .projectName(ctx.projectName)
                 .build();
-
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("[Process] Message processing completed in {}ms", duration);
-
-        return resp;
     }
+
+    // ==================== helpers ====================
 
     /**
      * Wrap English suggestions as SuggestedResponse, translating into the customer's
