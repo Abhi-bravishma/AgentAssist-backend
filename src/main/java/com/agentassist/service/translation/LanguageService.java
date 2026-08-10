@@ -10,6 +10,21 @@ public class LanguageService {
 
     private final AiProviderFactory aiProviderFactory;
 
+    /**
+     * The language replies should be written in (plan §4.9).
+     * <p>
+     * The conversation's base language wins when known: a customer who types one
+     * English message mid-conversation still gets the reply in their language.
+     * Falls back to the current message's detected language when no base
+     * language has been recorded yet.
+     */
+    public static String replyLanguage(String baseLanguage, String currentLanguage) {
+        if (baseLanguage != null && !baseLanguage.isBlank()) {
+            return baseLanguage;
+        }
+        return currentLanguage;
+    }
+
     public String detectLanguage(String text) {
         return aiProviderFactory.active().detectLanguage(text);
     }

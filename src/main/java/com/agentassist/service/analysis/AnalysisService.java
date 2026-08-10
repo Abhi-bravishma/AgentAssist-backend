@@ -11,8 +11,10 @@ import com.agentassist.dto.responseDTO.KnowledgeSource;
 import com.agentassist.dto.responseDTO.SuggestedResponse;
 import com.agentassist.model.MessageEntity;
 import com.agentassist.model.SenderType;
+import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
 import com.agentassist.rag.RagGateway;
+import com.agentassist.service.translation.LanguageService;
 import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,16 @@ public class AnalysisService {
     private final MessageService messageService;
     private final TranslationService translationService;
     private final RagGateway ragClient;
+    private final ConversationService conversationService;
+
+    /**
+     * Language replies should be written in (plan §4.9): the conversation's
+     * base language when recorded, else the latest message's language.
+     */
+    private String replyLanguage(String interactionId, MessageEntity latest) {
+        String currentLang = latest.getOriginalLanguage() != null ? latest.getOriginalLanguage() : "en";
+        return LanguageService.replyLanguage(conversationService.getBaseLanguage(interactionId), currentLang);
+    }
 
     // -------------------------------------------------------------------------------------
     // CORE AI METHODS
@@ -99,7 +111,7 @@ public class AnalysisService {
         if (all.isEmpty()) return List.of();
 
         var latest = all.get(all.size() - 1);
-        String lang = latest.getOriginalLanguage() != null ? latest.getOriginalLanguage() : "en";
+        String lang = replyLanguage(interactionId, latest);
         boolean isEnglish = "en".equalsIgnoreCase(lang);
 
         // English list (filter out nulls)
@@ -194,7 +206,7 @@ public class AnalysisService {
         }
 
         var latest = messages.get(messages.size() - 1);
-        String lang = latest.getOriginalLanguage() != null ? latest.getOriginalLanguage() : "en";
+        String lang = replyLanguage(latest.getInteractionId(), latest);
         boolean isEnglish = "en".equalsIgnoreCase(lang);
 
         // Build conversation history in format "Role: message"
@@ -349,7 +361,7 @@ public class AnalysisService {
         if (all.isEmpty()) return List.of();
 
         var latest = all.get(all.size() - 1);
-        String lang = latest.getOriginalLanguage() != null ? latest.getOriginalLanguage() : "en";
+        String lang = replyLanguage(interactionId, latest);
         boolean isEnglish = "en".equalsIgnoreCase(lang);
 
         // English list (filter out nulls)

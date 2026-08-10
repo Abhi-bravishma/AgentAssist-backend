@@ -19,6 +19,7 @@ import com.agentassist.service.conversation.ConversationService;
 import com.agentassist.service.conversation.MessageService;
 import com.agentassist.service.salesforce.PolicyCacheService;
 import com.agentassist.service.salesforce.SalesforceClient;
+import com.agentassist.service.translation.LanguageService;
 import com.agentassist.service.translation.TranslationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -82,6 +83,8 @@ public class ConversationProcessingService {
 
         boolean isCustomer;
         String detectedLang;
+        /** Language replies are written in: conversation base language, else detected (§4.9). */
+        String replyLang;
         String english;
         MessageEntity saved;
 
@@ -173,9 +176,16 @@ public class ConversationProcessingService {
     private void initConversation(Pipeline ctx) {
         log.debug("[Process] Step 2: Getting/creating conversation...");
         var conv = conversationService.getOrCreate(ctx.interactionId);
-        if (ctx.isCustomer && (conv.getBaseLanguage() == null || conv.getBaseLanguage().isBlank())) {
+        String baseLanguage = conv.getBaseLanguage();
+        if (ctx.isCustomer && (baseLanguage == null || baseLanguage.isBlank())) {
             conversationService.setBaseLanguage(ctx.interactionId, ctx.detectedLang);
+            baseLanguage = ctx.detectedLang;
             log.info("[Process] Set base language to: {}", ctx.detectedLang);
+        }
+        ctx.replyLang = LanguageService.replyLanguage(baseLanguage, ctx.detectedLang);
+        if (!ctx.replyLang.equalsIgnoreCase(ctx.detectedLang)) {
+            log.info("[Process] Reply language {} (conversation base) overrides current message language {}",
+                    ctx.replyLang, ctx.detectedLang);
         }
     }
 
@@ -321,8 +331,8 @@ public class ConversationProcessingService {
                 intentRegistryService.filteredMessage(ctx.currentMessageContext.filteredIntent(), ctx.projectName);
         SuggestedResponse sr = new SuggestedResponse();
         sr.setEnglishReply(filteredIntentMessage);
-        if (!ctx.detectedLang.equalsIgnoreCase("en")) {
-            sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, ctx.detectedLang));
+        if (!ctx.replyLang.equalsIgnoreCase("en")) {
+            sr.setUserLanguageReply(translationService.fromEnglish(filteredIntentMessage, ctx.replyLang));
         }
         ctx.suggestions = Collections.singletonList(sr);
         ctx.knowledgeSources = Collections.emptyList();
@@ -343,7 +353,7 @@ public class ConversationProcessingService {
         boolean customerDataOnly = IntentCodes.BILLING.equals(ctx.checklistContext.operationType());
 
         // Checklist answer - built up front so it is ready as the fallback
-        List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+        List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
 
         if (analysisService.isRagEnabled() && !isSimpleMessage) {
             var ragResult = analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
@@ -395,24 +405,24 @@ public class ConversationProcessingService {
                 boolean hasCustomerData = ctx.checklistContext != null && ctx.checklistContext.hasContext();
                 if (hasCustomerData && !ctx.bundle.getSuggestions().isEmpty()) {
                     log.info("[Process] Knowledge base found nothing, using AI suggestions grounded in customer data");
-                    ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+                    ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
                 } else {
                     log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
                     ctx.suggestions = toSuggestedResponses(List.of(
                             promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
-                            ctx.detectedLang);
+                            ctx.replyLang);
                 }
             }
         } else if (isSimpleMessage) {
             // Skip RAG for greetings - use AI suggestions directly
             log.info("[Process] Simple message detected, skipping RAG...");
-            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
             ctx.knowledgeSources = Collections.emptyList();
             log.info("[Process] Generated {} suggestions (skipped RAG for simple message)", ctx.suggestions.size());
         } else {
             // Fallback to AI-based suggestions without RAG
             log.info("[Process] RAG disabled, using AI for suggestions...");
-            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.detectedLang);
+            ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
             ctx.knowledgeSources = Collections.emptyList();
             log.info("[Process] Generated {} suggestions (no RAG)", ctx.suggestions.size());
         }
