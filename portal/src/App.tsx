@@ -43,9 +43,15 @@ export default function App() {
       <header>
         <h1>Agent Assist — Portal</h1>
         <nav>
-          {(['chat', 'documents', 'prompts', 'registry', 'settings'] as Tab[]).map(t => (
+          {([
+            ['chat', 'Chat'],
+            ['documents', 'Documents'],
+            ['prompts', 'AI Instructions'],
+            ['registry', 'Setup'],
+            ['settings', 'Settings'],
+          ] as [Tab, string][]).map(([t, label]) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t[0].toUpperCase() + t.slice(1)}
+              {label}
             </button>
           ))}
         </nav>
