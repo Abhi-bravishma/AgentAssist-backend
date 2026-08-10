@@ -35,6 +35,14 @@ class SettingsAndLanguageTest extends ConfigRegistryTestBase {
         // null/blank → "English"; unknown code → raw tag unchanged
         assertEquals("English", languageRegistryService.describe(null));
         assertEquals("English", languageRegistryService.describe(" "));
-        assertEquals("fr", languageRegistryService.describe("fr"));
+        assertEquals("xx", languageRegistryService.describe("xx"));
+    }
+
+    @Test
+    void part3SeedGivesDisplayNamesBeyondChinese() {
+        // §4.11: the model used to be told "Translate strictly to id"
+        assertEquals("Indonesian", languageRegistryService.describe("id"));
+        assertEquals("French", languageRegistryService.describe("fr"));
+        assertEquals("Filipino (Tagalog)", languageRegistryService.describe("tl"));
     }
 }

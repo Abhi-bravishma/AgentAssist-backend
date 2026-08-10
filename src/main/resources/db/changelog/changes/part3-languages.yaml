@@ -1,0 +1,122 @@
+databaseChangeLog:
+
+  # Plan §4.11: the translation prompt used to receive the raw language tag
+  # ("Translate strictly to id") for everything except Chinese. These rows give
+  # the model a proper display name instead. Unknown codes still pass through
+  # raw, so a missing row degrades to the old behaviour, never to an error.
+  - changeSet:
+      id: part3-01-seed-languages
+      author: restructure-part3
+      comment: Display names for the languages the demos actually see, plus common ones.
+      changes:
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "id" }
+              - column: { name: display_name, value: "Indonesian" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "tl" }
+              - column: { name: display_name, value: "Filipino (Tagalog)" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ms" }
+              - column: { name: display_name, value: "Malay" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "th" }
+              - column: { name: display_name, value: "Thai" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "vi" }
+              - column: { name: display_name, value: "Vietnamese" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "hi" }
+              - column: { name: display_name, value: "Hindi" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ta" }
+              - column: { name: display_name, value: "Tamil" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ja" }
+              - column: { name: display_name, value: "Japanese" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ko" }
+              - column: { name: display_name, value: "Korean" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "fr" }
+              - column: { name: display_name, value: "French" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "es" }
+              - column: { name: display_name, value: "Spanish" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "pt" }
+              - column: { name: display_name, value: "Portuguese" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "de" }
+              - column: { name: display_name, value: "German" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "it" }
+              - column: { name: display_name, value: "Italian" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "nl" }
+              - column: { name: display_name, value: "Dutch" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ar" }
+              - column: { name: display_name, value: "Arabic" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "ru" }
+              - column: { name: display_name, value: "Russian" }
+              - column: { name: active, valueBoolean: true }
+        - insert:
+            tableName: aa_language
+            columns:
+              - column: { name: code, value: "tr" }
+              - column: { name: display_name, value: "Turkish" }
+              - column: { name: active, valueBoolean: true }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_language WHERE code IN ('id','tl','ms','th','vi','hi','ta','ja','ko','fr','es','pt','de','it','nl','ar','ru','tr')

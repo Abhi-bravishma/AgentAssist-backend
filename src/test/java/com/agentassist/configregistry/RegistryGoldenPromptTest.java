@@ -115,16 +115,16 @@ class RegistryGoldenPromptTest extends ConfigRegistryTestBase {
 
     @Test
     void translateFromEnglish_bothVariants() {
-        // Described language (what describeLanguage produces for zh-Hant)
+        // §4.11: the display name now comes from aa_language for every code,
+        // not just Chinese. zh-Hant's row carries the exact old string, so that
+        // fixture is unchanged; fr renders "French" instead of the raw tag.
         assertGolden("ai.translate_from_english__zh-Hant", promptService.renderDefault(
                 TemplateKeys.AI_TRANSLATE_FROM_ENGLISH, Map.of(
-                        "target_language",
-                        "Traditional Chinese (繁體中文), using Traditional characters only",
+                        "target_language", languageRegistryService.describe("zh-Hant"),
                         "text", GoldenFixtureInputs.TEXT)));
-        // Raw tag passthrough
         assertGolden("ai.translate_from_english__fr", promptService.renderDefault(
                 TemplateKeys.AI_TRANSLATE_FROM_ENGLISH, Map.of(
-                        "target_language", "fr",
+                        "target_language", languageRegistryService.describe("fr"),
                         "text", GoldenFixtureInputs.TEXT)));
     }
 

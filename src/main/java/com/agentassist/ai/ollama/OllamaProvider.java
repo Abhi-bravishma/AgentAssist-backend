@@ -3,6 +3,7 @@ package com.agentassist.ai.ollama;
 import com.agentassist.ai.BaseAiProvider;
 import com.agentassist.ai.config.AiConfig;
 import com.agentassist.configregistry.IntentRegistryService;
+import com.agentassist.configregistry.LanguageRegistryService;
 import com.agentassist.configregistry.PromptService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.ollama.OllamaChatModel;
@@ -19,8 +20,10 @@ import org.springframework.stereotype.Service;
 public class OllamaProvider extends BaseAiProvider {
 
     public OllamaProvider(OllamaChatModel chatModel, AiConfig config, PromptService promptService,
-                          IntentRegistryService intentRegistryService) {
-        super(chatModel, "Ollama:" + config.getOllama().getModel(), promptService, intentRegistryService);
+                          IntentRegistryService intentRegistryService,
+                          LanguageRegistryService languageRegistryService) {
+        super(chatModel, "Ollama:" + config.getOllama().getModel(), promptService, intentRegistryService,
+                languageRegistryService);
         log.info("========================================");
         log.info("AI PROVIDER: Ollama (Local)");
         log.info("Model: {}", config.getOllama().getModel());

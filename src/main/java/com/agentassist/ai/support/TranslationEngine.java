@@ -1,5 +1,6 @@
 package com.agentassist.ai.support;
 
+import com.agentassist.configregistry.LanguageRegistryService;
 import com.agentassist.configregistry.PromptService;
 import com.agentassist.configregistry.TemplateKeys;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +10,9 @@ import java.util.Map;
 
 /**
  * Translation and language detection. Method bodies moved VERBATIM from
- * BaseAiProvider in the Part 2 split.
+ * BaseAiProvider in the Part 2 split; since Part 3 (§4.11) the translation
+ * target's display name comes from the aa_language registry instead of the
+ * old Chinese-only switch, so "id" reads "Indonesian" in the prompt.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -18,6 +21,7 @@ public class TranslationEngine {
     private final ChatCaller chat;
     private final String providerName;
     private final PromptService promptService;
+    private final LanguageRegistryService languageRegistry;
 
     public String translateToEnglish(String text) {
         log.info("[AI:{}] translateToEnglish called, text length: {}", providerName, text.length());
@@ -52,7 +56,7 @@ public class TranslationEngine {
 
         try {
             String prompt = promptService.renderDefault(TemplateKeys.AI_TRANSLATE_FROM_ENGLISH, Map.of(
-                    "target_language", LanguageSupport.describeLanguage(targetLang),
+                    "target_language", languageRegistry.describe(targetLang),
                     "text", english));
 
             String out = chat.call(prompt);

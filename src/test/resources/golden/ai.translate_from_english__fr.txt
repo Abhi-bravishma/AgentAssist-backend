@@ -1,4 +1,4 @@
-Translate strictly to fr.
+Translate strictly to French.
 Output ONLY the translated text.
 
 RULES:

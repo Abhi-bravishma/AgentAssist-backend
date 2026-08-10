@@ -2,8 +2,8 @@ package com.agentassist.ai.support;
 
 /**
  * Language-tag normalization and Chinese script detection. Moved VERBATIM from
- * BaseAiProvider in the Part 2 split. Part 3 may move describeLanguage onto
- * the aa_language registry (plan §4.11); until then this is the single home.
+ * BaseAiProvider in the Part 2 split. The old describeLanguage() lives on as
+ * data in the aa_language registry (§4.11, LanguageRegistryService.describe).
  */
 public final class LanguageSupport {
 
@@ -92,21 +92,5 @@ public final class LanguageSupport {
             return null;
         }
         return traditional >= simplified ? "zh-Hant" : "zh-Hans";
-    }
-
-    /**
-     * Human-readable target for the translation prompt. A bare tag like "zh-Hant" is
-     * ambiguous to the model; naming the script explicitly is not.
-     */
-    public static String describeLanguage(String tag) {
-        if (tag == null || tag.isBlank()) {
-            return "English";
-        }
-        return switch (tag.toLowerCase()) {
-            case "zh-hant" -> "Traditional Chinese (繁體中文), using Traditional characters only";
-            case "zh-hans" -> "Simplified Chinese (简体中文), using Simplified characters only";
-            case "zh" -> "Chinese";
-            default -> tag;
-        };
     }
 }

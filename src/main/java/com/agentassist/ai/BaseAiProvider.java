@@ -7,6 +7,7 @@ import com.agentassist.ai.support.FollowUpAnalyzer;
 import com.agentassist.ai.support.IntentClassifier;
 import com.agentassist.ai.support.TranslationEngine;
 import com.agentassist.configregistry.IntentRegistryService;
+import com.agentassist.configregistry.LanguageRegistryService;
 import com.agentassist.configregistry.PromptService;
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
@@ -42,7 +43,8 @@ public abstract class BaseAiProvider implements AiProvider {
     private final ComplianceAnalyzer complianceAnalyzer;
 
     protected BaseAiProvider(ChatModel chatModel, String providerName, PromptService promptService,
-                             IntentRegistryService intentRegistryService) {
+                             IntentRegistryService intentRegistryService,
+                             LanguageRegistryService languageRegistryService) {
         this.chatModel = chatModel;
         this.providerName = providerName;
         this.promptService = promptService;
@@ -51,7 +53,7 @@ public abstract class BaseAiProvider implements AiProvider {
         // (the golden capture provider) sees every component's prompt.
         ChatCaller chat = this::call;
         this.conversationAnalyzer = new ConversationAnalyzer(chat, providerName, promptService, mapper);
-        this.translationEngine = new TranslationEngine(chat, providerName, promptService);
+        this.translationEngine = new TranslationEngine(chat, providerName, promptService, languageRegistryService);
         this.intentClassifier = new IntentClassifier(chat, providerName, promptService, intentRegistryService);
         this.followUpAnalyzer = new FollowUpAnalyzer(chat, providerName, promptService, mapper);
         this.complianceAnalyzer = new ComplianceAnalyzer(chat, providerName, promptService, mapper);
