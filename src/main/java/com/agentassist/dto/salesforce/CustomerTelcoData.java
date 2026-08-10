@@ -291,10 +291,35 @@ public class CustomerTelcoData {
             if (rawDate != null && !rawDate.isBlank()) {
                 // Present but unparseable - pass through untouched
                 sb.append("Validity Date: ").append(rawDate).append("\n");
-            } else {
-                sb.append("Validity Date: not on record - if asked, say the validity "
-                        + "is not on record; do not invent a date\n");
+                return;
             }
+            // No single "current plan" product could be pinned down (no
+            // linkage id, or several active candidates - we never guess which
+            // one is THE plan). But the dates are still on the product rows,
+            // so compute validity for EVERY active dated product instead of
+            // hiding them - that answers "validity of my plans" exactly.
+            List<TelcoCustomerProduct> dated = activeDatedProducts();
+            if (!dated.isEmpty()) {
+                sb.append("Validity: see per-product validity below\n");
+                sb.append("VALIDITY BY PRODUCT (already computed from each product's "
+                        + "activation/expiry dates - state these, do not recalculate):\n");
+                for (TelcoCustomerProduct p : dated) {
+                    long days = ChronoUnit.DAYS.between(LocalDate.now(), parseDate(p.getExpiryDate()));
+                    sb.append("  - ").append(nullSafe(p.getName())).append(": ");
+                    if (days > 0) {
+                        sb.append("ACTIVE - expires ").append(parseDate(p.getExpiryDate()))
+                                .append(", ").append(days).append(" day(s) remaining\n");
+                    } else if (days == 0) {
+                        sb.append("EXPIRES TODAY (").append(parseDate(p.getExpiryDate())).append(")\n");
+                    } else {
+                        sb.append("EXPIRED ").append(-days).append(" day(s) ago (on ")
+                                .append(parseDate(p.getExpiryDate())).append(")\n");
+                    }
+                }
+                return;
+            }
+            sb.append("Validity Date: not on record - if asked, say the validity "
+                    + "is not on record; do not invent a date\n");
             return;
         }
         long days = ChronoUnit.DAYS.between(LocalDate.now(), expiry);
@@ -362,6 +387,17 @@ public class CustomerTelcoData {
             }
         }
         return only;
+    }
+
+    /** Active products that carry a parseable expiry date, in list order. */
+    private List<TelcoCustomerProduct> activeDatedProducts() {
+        if (customerProducts == null) {
+            return List.of();
+        }
+        return customerProducts.stream()
+                .filter(p -> "Active".equalsIgnoreCase(p.getStatus()))
+                .filter(p -> parseDate(p.getExpiryDate()) != null)
+                .collect(Collectors.toList());
     }
 
     /** Salesforce dates arrive as ISO strings, sometimes with a time part. */

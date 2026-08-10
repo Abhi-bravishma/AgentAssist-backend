@@ -109,7 +109,11 @@ class CustomerTelcoDataValidityTest {
     }
 
     @Test
-    void ambiguousProductsDoNotGuess() {
+    void ambiguousProductsListPerProductValidityInsteadOfHidingDates() {
+        // Two active plan products and no linkage id: we still never guess
+        // which one is THE current plan, but the dates are sitting right there
+        // - so validity is computed for EVERY dated product and the model is
+        // told to state those. "Not on record" must not appear.
         CustomerTelcoData d = data(
                 contact(null, null),
                 List.of(
@@ -118,8 +122,25 @@ class CustomerTelcoDataValidityTest {
                 null, null);
 
         String ctx = d.toAiContext();
-        assertTrue(ctx.contains("Validity Date: not on record"), ctx);
-        assertTrue(ctx.contains("do not invent a date"), ctx);
+        assertTrue(ctx.contains("VALIDITY BY PRODUCT"), ctx);
+        assertTrue(ctx.contains("state these, do not recalculate"), ctx);
+        assertTrue(ctx.contains("20 day(s) remaining"), ctx);
+        assertTrue(ctx.contains("2 day(s) remaining"), ctx);
+        assertFalse(ctx.contains("Validity Date: not on record"), ctx);
+    }
+
+    @Test
+    void perProductValidityCoversExpiredProductsToo() {
+        CustomerTelcoData d = data(
+                contact(null, null),
+                List.of(
+                        product("A", "Plan", "Active", TODAY.minusDays(10), TODAY.plusDays(20)),
+                        product("B", "Plan", "Active", TODAY.minusDays(40), TODAY.minusDays(4))),
+                null, null);
+
+        String ctx = d.toAiContext();
+        assertTrue(ctx.contains("20 day(s) remaining"), ctx);
+        assertTrue(ctx.contains("EXPIRED 4 day(s) ago"), ctx);
     }
 
     @Test
