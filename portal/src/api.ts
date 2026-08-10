@@ -188,3 +188,45 @@ export const registry = {
   deleteBrandAttribute: (id: number) =>
     api(`${REG}/brand-attributes/${id}`, { method: 'DELETE' }),
 };
+
+// ==================== test chat (Part 5) ====================
+
+export interface SuggestedResponse {
+  englishReply: string;
+  userLanguageReply: string | null;
+}
+
+export interface KnowledgeSource {
+  fileName: string;
+  relevanceScore: number | null;
+  documentType: string | null;
+  category: string | null;
+  contentPreview: string | null;
+  downloadUrl: string | null;
+}
+
+export interface ProcessResponse {
+  overallSentiment: number;
+  currentSentiment: number;
+  summary: string | null;
+  suggestedResponses: SuggestedResponse[];
+  knowledgeSources: KnowledgeSource[];
+  documentsFound: number;
+  usedKnowledgeBase: boolean;
+  usedChecklist: boolean;
+  checklistOperation: string | null;
+  customerName: string | null;
+  projectName: string | null;
+}
+
+export const chat = {
+  process: (p: {
+    interactionId: string; from: 'customer' | 'user'; message: string;
+    projectName: string; mobileNumber?: string;
+  }) =>
+    api<ProcessResponse>('/api/v1/agent-assistant/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }),
+};
