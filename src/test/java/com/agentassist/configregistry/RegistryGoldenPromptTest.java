@@ -1,7 +1,9 @@
 package com.agentassist.configregistry;
 
+import com.agentassist.configregistry.repository.AaIntentRepository;
 import com.agentassist.golden.GoldenFixtureInputs;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -23,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RegistryGoldenPromptTest extends ConfigRegistryTestBase {
 
     private static final Path GOLDEN_DIR = Path.of("src", "test", "resources", "golden");
+
+    @Autowired
+    private AaIntentRepository intentRepository;
 
     private static String fixture(String name) {
         try {
@@ -131,9 +136,32 @@ class RegistryGoldenPromptTest extends ConfigRegistryTestBase {
 
     @Test
     void detectOperation() {
-        assertGolden("ai.detect_operation", promptService.renderDefault(
-                TemplateKeys.AI_DETECT_OPERATION,
-                Map.of("latest_message", GoldenFixtureInputs.LATEST_MESSAGE)));
+        // Since 2b the template is v2 with {intent_codes}/{intent_rules} slots
+        // filled from aa_intent rows — the ASSEMBLED prompt must still be
+        // byte-identical to the fixture captured from the hardcoded original.
+        Map<String, String> vars = new HashMap<>(intentRegistryService.classifierVars());
+        vars.put("latest_message", GoldenFixtureInputs.LATEST_MESSAGE);
+        assertGolden("ai.detect_operation",
+                promptService.renderDefault(TemplateKeys.AI_DETECT_OPERATION, vars));
+    }
+
+    @Test
+    void newIntentFlowsIntoClassifierAutomatically() {
+        // Adding an aa_intent row with a description is ALL it takes — the
+        // classifier prompt and the valid-code set pick it up with no code or
+        // template change. (Rolled back with the test transaction.)
+        intentRepositorySave("ROOM_BOOKING", "Return \"ROOM_BOOKING\" if customer asks to book a room.");
+
+        Map<String, String> vars = intentRegistryService.classifierVars();
+        assertEquals(true, vars.get("intent_codes").endsWith("\nROOM_BOOKING"));
+        assertEquals(true, vars.get("intent_rules").contains("book a room"));
+        assertEquals(true, intentRegistryService.validClassifierCodes().contains("ROOM_BOOKING"));
+        assertEquals(true, intentRegistryService.validClassifierCodes().contains("GENERAL"));
+    }
+
+    private void intentRepositorySave(String code, String description) {
+        intentRepository.save(com.agentassist.configregistry.entity.AaIntent.builder()
+                .code(code).displayName(code).active(true).description(description).build());
     }
 
     @Test

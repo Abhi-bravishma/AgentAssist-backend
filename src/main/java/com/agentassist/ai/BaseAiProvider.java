@@ -6,6 +6,7 @@ import com.agentassist.ai.support.ConversationAnalyzer;
 import com.agentassist.ai.support.FollowUpAnalyzer;
 import com.agentassist.ai.support.IntentClassifier;
 import com.agentassist.ai.support.TranslationEngine;
+import com.agentassist.configregistry.IntentRegistryService;
 import com.agentassist.configregistry.PromptService;
 import com.agentassist.dto.responseDTO.AiAnalysisBundle;
 import com.agentassist.dto.responseDTO.AiAnalysisResult;
@@ -40,7 +41,8 @@ public abstract class BaseAiProvider implements AiProvider {
     private final FollowUpAnalyzer followUpAnalyzer;
     private final ComplianceAnalyzer complianceAnalyzer;
 
-    protected BaseAiProvider(ChatModel chatModel, String providerName, PromptService promptService) {
+    protected BaseAiProvider(ChatModel chatModel, String providerName, PromptService promptService,
+                             IntentRegistryService intentRegistryService) {
         this.chatModel = chatModel;
         this.providerName = providerName;
         this.promptService = promptService;
@@ -50,7 +52,7 @@ public abstract class BaseAiProvider implements AiProvider {
         ChatCaller chat = this::call;
         this.conversationAnalyzer = new ConversationAnalyzer(chat, providerName, promptService, mapper);
         this.translationEngine = new TranslationEngine(chat, providerName, promptService);
-        this.intentClassifier = new IntentClassifier(chat, providerName, promptService);
+        this.intentClassifier = new IntentClassifier(chat, providerName, promptService, intentRegistryService);
         this.followUpAnalyzer = new FollowUpAnalyzer(chat, providerName, promptService, mapper);
         this.complianceAnalyzer = new ComplianceAnalyzer(chat, providerName, promptService, mapper);
 

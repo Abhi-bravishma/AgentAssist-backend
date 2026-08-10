@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -83,6 +84,40 @@ public class IntentRegistryService {
         }
         String projectDisplay = projectCode != null ? projectCode : "this service";
         return template.replace("{project}", projectDisplay);
+    }
+
+    /**
+     * Variables for the ai.detect_operation v2 template: the intent code list
+     * and the concatenated per-intent classification rules, both from ACTIVE
+     * aa_intent rows in seed/id order. Adding an intent row (with a
+     * description) is now all it takes for the classifier to know it.
+     * Byte-identity with the old hardcoded prompt is pinned by the golden
+     * fixture. Intents without a description are excluded and logged — an
+     * empty rules block would silently degrade classification.
+     */
+    public Map<String, String> classifierVars() {
+        List<AaIntent> active = intentRepository.findByActiveTrueOrderByIdAsc();
+        List<AaIntent> withRules = active.stream()
+                .filter(i -> i.getDescription() != null && !i.getDescription().isBlank())
+                .toList();
+        active.stream()
+                .filter(i -> i.getDescription() == null || i.getDescription().isBlank())
+                .forEach(i -> log.warn("[ConfigRegistry] Intent '{}' has no description - "
+                        + "excluded from the classifier prompt", i.getCode()));
+        String codes = withRules.stream().map(AaIntent::getCode)
+                .collect(Collectors.joining("\n"));
+        String rules = withRules.stream().map(AaIntent::getDescription)
+                .collect(Collectors.joining("\n\n"));
+        return Map.of("intent_codes", codes, "intent_rules", rules);
+    }
+
+    /** Codes the classifier may legally return: active intents plus GENERAL. */
+    public Set<String> validClassifierCodes() {
+        Set<String> codes = intentRepository.findByActiveTrueOrderByIdAsc().stream()
+                .map(AaIntent::getCode)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        codes.add("GENERAL");
+        return codes;
     }
 
     /** Active intents this project may use — for the Part 2 classifier. */

@@ -1,0 +1,16 @@
+Return "TELCO" if customer mentions ANY of these (mobile/telecom related):
+- Mobile plan / data plan / internet package
+- "What is my current plan?" / "Show my plan"
+- "How much data do I have?" / "Check my quota" / "Remaining data"
+- "I need more data" / "Upgrade my plan" / "Better plan"
+- "Recommend a plan" / "Suggest a plan" / "Which plan"
+- "Roaming" / "Travel to Singapore/Malaysia/Thailand"
+- "Add-on" / "Extra data" / "Top up" / "Pulsa"
+- "Data usage" / "Habis kuota" / "Kuota malam"
+- "TikTok plan" / "YouTube plan" / "WhatsApp unlimited"
+- "Prepaid" / "Postpaid" / "Recharge"
+- "Weekly plan" / "Monthly plan" / "7 days" / "30 days"
+- "Promo" / "Lebaran offer" / "Weekend special"
+- "Cheap plan" / "Budget plan" / "Murah"
+- "Student plan" / "Mahasiswa"
+- KEY: Anything related to mobile/telecom plans, data, or services

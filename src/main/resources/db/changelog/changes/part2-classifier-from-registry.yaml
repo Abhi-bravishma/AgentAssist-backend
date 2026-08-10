@@ -1,0 +1,66 @@
+# Part 2b — the intent classifier prompt is generated from aa_intent rows.
+#
+# The v1 ai.detect_operation template hardcoded the intent list and the
+# per-intent rules, so adding an intent meant editing both aa_intent AND the
+# template (the dual maintenance flagged in the Part 1 plan §13). Now:
+#   - each intent's classification rules live in aa_intent.description
+#     (files under intent-rules/, extracted MECHANICALLY from the v1 template)
+#   - ai.detect_operation v2 has {intent_codes} and {intent_rules} slots that
+#     IntentRegistryService.classifierVars() fills from active intents
+# Proven at extraction time: v2 + these rules reassembles the v1 prompt
+# BYTE-IDENTICALLY, and the golden fixture pins it.
+databaseChangeLog:
+
+  - changeSet:
+      id: part2-01-intent-descriptions
+      author: restructure-part2
+      changes:
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/FEE_WAIVER.txt" }
+            where: code = 'FEE_WAIVER'
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/HOME_LOAN_CLOSURE.txt" }
+            where: code = 'HOME_LOAN_CLOSURE'
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/POLICY.txt" }
+            where: code = 'POLICY'
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/CLAIMS.txt" }
+            where: code = 'CLAIMS'
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/TELCO.txt" }
+            where: code = 'TELCO'
+        - update:
+            tableName: aa_intent
+            columns:
+              - column: { name: description, valueClobFile: "intent-rules/BILLING.txt" }
+            where: code = 'BILLING'
+      rollback:
+        - sql:
+            sql: UPDATE aa_intent SET description = NULL WHERE code IN ('FEE_WAIVER','HOME_LOAN_CLOSURE','POLICY','CLAIMS','TELCO','BILLING')
+
+  - changeSet:
+      id: part2-02-detect-operation-v2
+      author: restructure-part2
+      changes:
+        - insert:
+            tableName: aa_prompt_template
+            columns:
+              - column: { name: template_key, value: "ai.detect_operation" }
+              - column: { name: version, valueNumeric: 2 }
+              - column: { name: content, valueClobFile: "prompts/ai.detect_operation.v2.txt" }
+              - column: { name: status, value: "PUBLISHED" }
+              - column: { name: created_by, value: "part2-seed" }
+      rollback:
+        - sql:
+            sql: DELETE FROM aa_prompt_template WHERE template_key = 'ai.detect_operation' AND version = 2

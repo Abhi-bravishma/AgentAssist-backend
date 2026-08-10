@@ -1,0 +1,9 @@
+Return "FEE_WAIVER" if customer mentions ANY of these:
+- Credit card fee waiver / annual fee waiver
+- NAFFL (No Annual Fee For Life)
+- Waiving/removing card fees
+- "Am I eligible for fee waiver?" (checking eligibility)
+- "Do I qualify for fee waiver?" (checking eligibility)
+- "Which rewards do I have on my card?" (card benefits/rewards)
+- "What benefits do I have on my credit card?" (card benefits)
+- Asking about THEIR credit card data/eligibility/rewards

@@ -8,3 +8,6 @@ databaseChangeLog:
   - include:
       file: changes/part4-internal-rag.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/part2-classifier-from-registry.yaml
+      relativeToChangelogFile: true

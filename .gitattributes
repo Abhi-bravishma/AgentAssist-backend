@@ -6,3 +6,4 @@ src/test/resources/golden/** -text
 # DB. A CRLF checkout would seed \r\n into every prompt and break byte-identity
 # with the golden fixtures (and change what the model receives).
 src/main/resources/db/changelog/changes/prompts/** -text
+src/main/resources/db/changelog/changes/intent-rules/** -text

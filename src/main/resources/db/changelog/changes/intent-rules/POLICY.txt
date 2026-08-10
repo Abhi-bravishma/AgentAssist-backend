@@ -1,0 +1,7 @@
+Return "POLICY" if customer wants to SEE/LIST/COUNT their personal policy DATA:
+- "How many policies do I have?" (counting their policies)
+- "What are my policies?" (listing their policies)
+- "Show my policy details" (viewing their data)
+- "List my policies" (listing their data)
+- "What is my policy number?" (their specific data)
+- KEY: Asking for their PERSONAL POLICY DATA

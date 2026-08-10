@@ -2,6 +2,7 @@ package com.agentassist.ai.openai;
 
 import com.agentassist.ai.BaseAiProvider;
 import com.agentassist.ai.config.AiConfig;
+import com.agentassist.configregistry.IntentRegistryService;
 import com.agentassist.configregistry.PromptService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -17,8 +18,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class OpenAiProvider extends BaseAiProvider {
 
-    public OpenAiProvider(OpenAiChatModel chatModel, AiConfig config, PromptService promptService) {
-        super(chatModel, "OpenAI:" + config.getOpenai().getModel(), promptService);
+    public OpenAiProvider(OpenAiChatModel chatModel, AiConfig config, PromptService promptService,
+                          IntentRegistryService intentRegistryService) {
+        super(chatModel, "OpenAI:" + config.getOpenai().getModel(), promptService, intentRegistryService);
         log.info("========================================");
         log.info("AI PROVIDER: OpenAI");
         log.info("Model: {}", config.getOpenai().getModel());

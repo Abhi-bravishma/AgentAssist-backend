@@ -11,4 +11,7 @@ public interface AaIntentRepository extends JpaRepository<AaIntent, Long> {
     Optional<AaIntent> findByCode(String code);
 
     List<AaIntent> findByActiveTrue();
+
+    /** Deterministic order for classifier prompt assembly (seed/id order). */
+    List<AaIntent> findByActiveTrueOrderByIdAsc();
 }

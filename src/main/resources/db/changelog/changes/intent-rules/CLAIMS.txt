@@ -1,0 +1,6 @@
+Return "CLAIMS" if customer wants to SEE/CHECK their personal claim DATA:
+- "How many claims do I have?" (counting their claims)
+- "What is my claim status?" (checking their status)
+- "Show my claims" (listing their claims)
+- "Is my claim approved?" (checking their status)
+- KEY: Asking for their PERSONAL CLAIM DATA

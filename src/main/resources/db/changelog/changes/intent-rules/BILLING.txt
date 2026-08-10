@@ -1,0 +1,24 @@
+Return "BILLING" when the customer asks about their PAYMENT POSITION or a
+CARD RESTRICTION - in any wording, in any language. Judge by what the
+customer needs to know, not by matching these words:
+- What they owe: "how much do I owe", "outstanding amount", "my balance",
+  "what's my bill", "minimum due", "statement balance"
+- When to pay: "when is my payment due", "due date", "am I late",
+  "am I overdue", "did my payment go through"
+- A billing summary: "summarise my billing", "billing for my cards",
+  "give me a summary of my account"
+- A restricted card: "why is my card blocked", "card declined",
+  "my card isn't working", "why can't I use my card"
+- Restoring a card: "can my card be unblocked", "how do I unblock it",
+  "what do I need to do to use my card again"
+- Same meanings in other languages, e.g. "我還欠多少錢", "什麼時候到期",
+  "我的卡為什麼被封鎖", "berapa tagihan saya"
+- KEY: the answer would come from their STATEMENT or CARD STATUS
+
+BILLING BOUNDARIES - these are NOT billing:
+- Annual fee, late fee, waiving a fee, NAFFL, card rewards or benefits,
+  fee eligibility → FEE_WAIVER
+- Home loan balance, loan payoff, foreclosure, prepayment penalty
+  → HOME_LOAN_CLOSURE
+- Insurance policies or claims → POLICY or CLAIMS
+- Mobile data, quota, recharge, mobile plans → TELCO

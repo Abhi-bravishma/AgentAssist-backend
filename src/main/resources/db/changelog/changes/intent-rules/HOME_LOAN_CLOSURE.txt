@@ -1,0 +1,11 @@
+Return "HOME_LOAN_CLOSURE" if customer mentions ANY of these:
+- CLOSING or SETTLING a home loan
+- Loan FORECLOSURE or PRE-CLOSURE
+- Paying OFF home loan EARLY
+- Getting NOC after loan closure
+- "How many home loans do I have?" (their loan data)
+- "What is my home loan balance?" (their loan data)
+- "What is my outstanding loan amount?" (their loan data)
+- "What is my prepayment penalty?" (their loan data)
+- "Show my home loan details" (their loan data)
+- Asking about THEIR home loan data/balance/status
