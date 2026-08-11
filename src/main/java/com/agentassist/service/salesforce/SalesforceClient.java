@@ -336,8 +336,17 @@ public class SalesforceClient {
         }
     }
 
+    // The plan CATALOGUE (what the company sells) is identical for every
+    // customer and changes rarely - unlike the customer's own record, which is
+    // always fetched fresh. Cache it briefly so it is not re-downloaded on
+    // every telco message; on a failed refresh the stale copy is served rather
+    // than nothing.
+    private static final long PLAN_CATALOGUE_TTL_MS = 10 * 60 * 1000;
+    private volatile TelcoPlanResponse cachedPlanCatalogue;
+    private volatile long planCatalogueFetchedAt;
+
     /**
-     * Fetch all available telco plans from Salesforce.
+     * Fetch all available telco plans from Salesforce (cached ~10 min).
      *
      * @return TelcoPlanResponse with all plans, or null if error
      */
@@ -345,6 +354,13 @@ public class SalesforceClient {
         if (!salesforceConfig.isEnabled()) {
             log.debug("Salesforce integration is disabled");
             return null;
+        }
+
+        TelcoPlanResponse cached = cachedPlanCatalogue;
+        if (cached != null && System.currentTimeMillis() - planCatalogueFetchedAt < PLAN_CATALOGUE_TTL_MS) {
+            log.debug("Telco plan catalogue served from cache ({} plans)",
+                    cached.getData() != null ? cached.getData().size() : 0);
+            return cached;
         }
 
         log.info("Fetching all available telco plans");
@@ -361,18 +377,21 @@ public class SalesforceClient {
             if (response != null && response.isSuccess()) {
                 log.info("Telco plans retrieved: {} plans",
                         response.getData() != null ? response.getData().size() : 0);
+                cachedPlanCatalogue = response;
+                planCatalogueFetchedAt = System.currentTimeMillis();
                 return response;
             }
 
-            log.warn("Telco plans API returned unsuccessful response or null");
-            return null;
+            log.warn("Telco plans API returned unsuccessful response or null{}",
+                    cached != null ? " - serving stale catalogue" : "");
+            return cached;
 
         } catch (WebClientResponseException e) {
             log.error("Telco plans API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            return null;
+            return cached;
         } catch (Exception e) {
             log.error("Failed to call Telco plans API: {}", e.getMessage(), e);
-            return null;
+            return cached;
         }
     }
 
@@ -391,6 +410,19 @@ public class SalesforceClient {
         if (planId == null || planId.isBlank()) {
             log.debug("Plan ID is empty, skipping lookup");
             return null;
+        }
+
+        // The catalogue already contains every plan - answer from the cached
+        // copy when we have it instead of another HTTP round-trip.
+        TelcoPlanResponse catalogue = cachedPlanCatalogue;
+        if (catalogue != null && catalogue.getData() != null
+                && System.currentTimeMillis() - planCatalogueFetchedAt < PLAN_CATALOGUE_TTL_MS) {
+            for (TelcoPlan p : catalogue.getData()) {
+                if (planId.equals(p.getId())) {
+                    log.debug("Telco plan {} served from cached catalogue", planId);
+                    return p;
+                }
+            }
         }
 
         log.info("Fetching telco plan by ID: {}", planId);
