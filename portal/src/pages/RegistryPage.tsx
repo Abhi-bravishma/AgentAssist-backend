@@ -197,7 +197,7 @@ function IntentsSection({ intents, reload }:
       )}
 
       {justCreated && (
-        <div className="row" style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+        <div className="callout row" style={{ marginTop: 14 }}>
           <span>
             ✅ <b>{justCreated.displayName || justCreated.code}</b> is live for recognition.
             Want to give it a step-by-step checklist too?

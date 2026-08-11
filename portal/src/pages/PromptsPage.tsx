@@ -157,7 +157,7 @@ export default function PromptsPage() {
             <button className="ghost btn" onClick={load}>Refresh</button>
           </div>
           {newOpen && (
-            <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+            <div className="callout" style={{ marginBottom: 12 }}>
               <p className="hint" style={{ marginTop: 0 }}>
                 A checklist is the step-by-step guidance the AI follows for one request type.
                 Pick the request type (create it on the Setup page first if it doesn’t exist),
