@@ -157,29 +157,11 @@
 			<scope>provided</scope>
 		</dependency>
 
-		<!-- Apache POI for Word/Excel -->
-		<dependency>
-			<groupId>org.apache.poi</groupId>
-			<artifactId>poi</artifactId>
-			<version>5.2.5</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.poi</groupId>
-			<artifactId>poi-ooxml</artifactId>
-			<version>5.2.5</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.poi</groupId>
-			<artifactId>poi-scratchpad</artifactId>
-			<version>5.2.5</version>
-		</dependency>
-
-		<!-- Apache PDFBox for PDF -->
-		<dependency>
-			<groupId>org.apache.pdfbox</groupId>
-			<artifactId>pdfbox</artifactId>
-			<version>3.0.1</version>
-		</dependency>
+		<!-- NOTE: no explicit POI/PDFBox pins here - document parsing runs through
+		     spring-ai-tika-document-reader, and Tika must resolve its OWN matching
+		     PDFBox/POI versions. A hand-pinned pdfbox 3.0.1 (leftover from the
+		     removed KnowledgeArticle parser) broke every PDF upload with
+		     NoSuchMethodError: PDF2XHTML.setIgnoreContentStreamSpaceGlyphs. -->
 
 		<!-- Actuator -->
 		<dependency>
