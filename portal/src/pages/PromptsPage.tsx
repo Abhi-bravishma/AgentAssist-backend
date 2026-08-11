@@ -185,6 +185,13 @@ export default function PromptsPage() {
                 </button>
                 <button className="ghost btn" onClick={() => setNewOpen(false)}>Cancel</button>
               </div>
+              <p className="hint" style={{ margin: '8px 0 0' }}>
+                Don’t see your request type? It needs to exist first — the AI must know WHEN to
+                use a checklist before it can follow one.{' '}
+                <button className="link" onClick={() => { window.location.hash = 'registry'; }}>
+                  Create it on Setup →
+                </button>
+              </p>
             </div>
           )}
           <div className="scroll">
