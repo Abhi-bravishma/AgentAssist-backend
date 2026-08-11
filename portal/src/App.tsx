@@ -16,8 +16,20 @@ export default function App() {
   const [provider, setProvider] = useState<string>('…');
 
   useEffect(() => {
-    window.location.hash = tab;
+    if (window.location.hash.replace('#', '') !== tab) {
+      window.location.hash = tab;
+    }
   }, [tab]);
+
+  // Follow hash changes (cross-page jumps like Setup -> AI Instructions, browser Back)
+  useEffect(() => {
+    const onHash = () => {
+      const t = window.location.hash.replace('#', '') as Tab;
+      if (['chat', 'documents', 'prompts', 'registry', 'settings'].includes(t)) setTab(t);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const refreshHeader = async () => {
     try {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrandAttribute, Intent, Project, registry } from '../api';
+import { NEW_CHECKLIST_FLAG } from './PromptsPage';
 import { toast } from '../toast';
 
 /**
@@ -60,6 +61,7 @@ function IntentsSection({ intents, reload }:
   const [creating, setCreating] = useState(false);
   const [create, setCreate] = useState({ code: '', displayName: '', description: '', filteredMessageTemplate: '' });
   const [busy, setBusy] = useState(false);
+  const [justCreated, setJustCreated] = useState<Intent | null>(null);
 
   const current = intents.find(i => i.code === selected) || null;
 
@@ -105,16 +107,21 @@ function IntentsSection({ intents, reload }:
     setBusy(true);
     try {
       const made = await registry.createIntent(create);
-      toast(`"${made.displayName || made.code}" created — the AI recognizes it from the next message on. `
-        + `Optional: give it a checklist by publishing "checklist.${made.code.toLowerCase()}" on the AI instructions page.`);
+      toast(`"${made.displayName || made.code}" created — the AI recognizes it from the next message on`);
       setCreate({ code: '', displayName: '', description: '', filteredMessageTemplate: '' });
       setCreating(false);
+      setJustCreated(made);
       await reload();
     } catch (e: any) {
       toast('Could not create: ' + e.message, true);
     } finally {
       setBusy(false);
     }
+  };
+
+  const goWriteChecklist = (code: string) => {
+    sessionStorage.setItem(NEW_CHECKLIST_FLAG, code);
+    window.location.hash = 'prompts';
   };
 
   return (
@@ -186,6 +193,19 @@ function IntentsSection({ intents, reload }:
               {busy ? 'Saving…' : 'Save — live immediately'}
             </button>
           </div>
+        </div>
+      )}
+
+      {justCreated && (
+        <div className="row" style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+          <span>
+            ✅ <b>{justCreated.displayName || justCreated.code}</b> is live for recognition.
+            Want to give it a step-by-step checklist too?
+          </span>
+          <button className="btn" onClick={() => goWriteChecklist(justCreated.code)}>
+            Create its checklist now →
+          </button>
+          <button className="ghost btn" onClick={() => setJustCreated(null)}>Later</button>
         </div>
       )}
 

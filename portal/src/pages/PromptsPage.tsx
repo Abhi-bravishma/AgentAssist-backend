@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { admin, TemplateSummary } from '../api';
+import { admin, Intent, Project, registry, TemplateSummary } from '../api';
 import { CATEGORY_ORDER, TEMPLATE_INFO, friendlyName, templateCategory } from '../templateInfo';
 import { toast } from '../toast';
+
+/** Set by the Setup page's "Create its checklist now" button. */
+export const NEW_CHECKLIST_FLAG = 'aa-new-checklist-for';
 
 /** Key for a variant row: "checklist.fee_waiver" or "checklist.fee_waiver@SCB". */
 const variantId = (t: { templateKey: string; projectCode: string | null }) =>
@@ -18,6 +21,13 @@ export default function PromptsPage() {
   const [version, setVersion] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // "+ New checklist" form
+  const [intents, setIntents] = useState<Intent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newIntent, setNewIntent] = useState('');
+  const [newProject, setNewProject] = useState('');
+  const [isDraftNew, setIsDraftNew] = useState(false);
 
   const load = async () => {
     try {
@@ -28,7 +38,18 @@ export default function PromptsPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    registry.intents().then(setIntents).catch(() => {});
+    registry.projects().then(p => setProjects(p.filter(x => x.active))).catch(() => {});
+    // Arrived here via Setup's "Create its checklist now"?
+    const pending = sessionStorage.getItem(NEW_CHECKLIST_FLAG);
+    if (pending) {
+      sessionStorage.removeItem(NEW_CHECKLIST_FLAG);
+      setNewOpen(true);
+      setNewIntent(pending);
+    }
+  }, []);
 
   const dirty = selected !== null && content !== originalContent;
 
@@ -36,6 +57,7 @@ export default function PromptsPage() {
     if (selected && variantId(selected) === variantId(t)) return;
     if (dirty && !window.confirm(
       'You have unpublished edits — switching will discard them.\n\nDiscard the edits?')) return;
+    setIsDraftNew(false);
     setSelected(t);
     setLoading(true);
     setContent('');
@@ -53,6 +75,29 @@ export default function PromptsPage() {
     }
   };
 
+  /** Open the editor for a checklist that does not exist yet (v1 on publish). */
+  const startNewChecklist = () => {
+    if (!newIntent) return;
+    const key = 'checklist.' + newIntent.toLowerCase();
+    const projectCode = newProject || null;
+    const existing = templates.find(t => t.templateKey === key
+      && (t.projectCode ?? null) === projectCode);
+    if (existing) {
+      toast('That checklist already exists — opening it');
+      setNewOpen(false);
+      select(existing);
+      return;
+    }
+    if (dirty && !window.confirm(
+      'You have unpublished edits — switching will discard them.\n\nDiscard the edits?')) return;
+    setIsDraftNew(true);
+    setSelected({ templateKey: key, projectCode, publishedVersion: null, latestVersion: null, latestStatus: 'NEW' });
+    setContent('');
+    setOriginalContent('');
+    setVersion(null);
+    setNewOpen(false);
+  };
+
   const publish = async () => {
     if (!selected || !dirty) return;
     const scope = selected.projectCode
@@ -68,6 +113,7 @@ export default function PromptsPage() {
       toast(`"${friendlyName(r.templateKey)}" is now live (version ${r.version})`);
       setOriginalContent(content);
       setVersion(r.version);
+      setIsDraftNew(false);
       await load();
     } catch (e: any) {
       toast('Could not publish: ' + e.message, true);
@@ -107,8 +153,40 @@ export default function PromptsPage() {
           <div className="row" style={{ marginBottom: 10 }}>
             <h2 style={{ margin: 0 }}>Instructions</h2>
             <span className="spacer" />
+            <button className="btn" onClick={() => setNewOpen(!newOpen)}>+ New checklist</button>
             <button className="ghost btn" onClick={load}>Refresh</button>
           </div>
+          {newOpen && (
+            <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--bg)', borderRadius: 8 }}>
+              <p className="hint" style={{ marginTop: 0 }}>
+                A checklist is the step-by-step guidance the AI follows for one request type.
+                Pick the request type (create it on the Setup page first if it doesn’t exist),
+                choose who it applies to, then write and publish the text.
+              </p>
+              <div className="row">
+                <div>
+                  <label>Request type</label>
+                  <select value={newIntent} onChange={e => setNewIntent(e.target.value)}>
+                    <option value="">— choose —</option>
+                    {intents.filter(i => i.active).map(i => (
+                      <option key={i.code} value={i.code}>{i.displayName || i.code}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Applies to</label>
+                  <select value={newProject} onChange={e => setNewProject(e.target.value)}>
+                    <option value="">All projects</option>
+                    {projects.map(p => <option key={p.code} value={p.code}>{p.code} only</option>)}
+                  </select>
+                </div>
+                <button className="btn" onClick={startNewChecklist} disabled={!newIntent}>
+                  Write the checklist →
+                </button>
+                <button className="ghost btn" onClick={() => setNewOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
           <div className="scroll">
             <table>
               <thead>
@@ -166,10 +244,11 @@ export default function PromptsPage() {
               </div>
               <p className="hint" style={{ marginTop: 0, marginBottom: 6 }}>
                 For: <b>{appliesTo(selected)}</b>
+                {isDraftNew && <> · <span className="pill warn">NEW — doesn’t exist until you publish</span></>}
                 {version != null && <> · Live version: <b>{version}</b></>}
                 {dirty
                   ? <> · publishing creates version {(version ?? 0) + 1}</>
-                  : <> · nothing to publish yet — edit the text first</>}
+                  : <> · nothing to publish yet — {isDraftNew ? 'write the checklist first' : 'edit the text first'}</>}
               </p>
               {TEMPLATE_INFO[selected.templateKey] && (
                 <p className="hint" style={{ marginTop: 0 }}>
@@ -182,7 +261,17 @@ export default function PromptsPage() {
               </p>
               {loading
                 ? <div className="empty">Loading…</div>
-                : <textarea value={content} onChange={e => setContent(e.target.value)} spellCheck={false} />}
+                : <textarea value={content} onChange={e => setContent(e.target.value)} spellCheck={false}
+                            placeholder={isDraftNew
+                              ? 'Write the step-by-step guidance the AI should follow for this request type.\n\n'
+                                + 'Example structure:\n'
+                                + 'CHECKLIST — <what this handles>:\n'
+                                + '1. Verify the customer’s identity.\n'
+                                + '2. Ask which product/service the request is about.\n'
+                                + '3. Explain the rules: <your business rules here>.\n'
+                                + '4. If not resolvable, direct the customer to {hotline}.\n\n'
+                                + 'You can use slots like {bank_name} and {hotline} from Setup → Company details.'
+                              : undefined} />}
             </>
           )}
         </section>
