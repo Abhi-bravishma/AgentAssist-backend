@@ -1,7 +1,6 @@
 package com.agentassist.rag;
 
 import io.qdrant.client.QdrantClient;
-import io.qdrant.client.grpc.Collections;
 import io.qdrant.client.grpc.Points;
 import io.qdrant.client.grpc.Points.Filter;
 import io.qdrant.client.grpc.Points.Condition;
@@ -61,16 +60,10 @@ public class AgentAssistVectorSearchService {
     public List<Document> search(String query, Long companyId, AgentAssistSearchFilter filters,
                                  int topK, double similarityThreshold) {
         log.info("========== AGENT-ASSIST VECTOR SEARCH START ==========");
-
-        // Quick collection sanity check
-        try {
-            Collections.CollectionInfo info = qdrantClient.getCollectionInfoAsync(collectionName)
-                    .get(QDRANT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            log.info("QDRANT-CHECK: collection={}, points={}, indexes={}",
-                    collectionName, info.getPointsCount(), info.getPayloadSchemaMap().keySet());
-        } catch (Exception e) {
-            log.error("QDRANT-CHECK FAILED: {}", e.getMessage());
-        }
+        // NOTE: the upstream per-search "collection sanity check" (an extra
+        // getCollectionInfo round-trip used only for a log line) was removed -
+        // it doubled Qdrant traffic and stalled messages for up to 30s+ when
+        // the server was slow. The real search below fails loudly on its own.
 
         log.info("Query: '{}'", truncateForLog(query));
         log.info("CompanyId: {}, TopK: {}, Threshold: {}", companyId, topK, similarityThreshold);
