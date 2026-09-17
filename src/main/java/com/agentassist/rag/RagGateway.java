@@ -137,21 +137,35 @@ public class RagGateway {
     }
 
     public RagDocumentListResponse listDocuments(int page, int size) {
+        return listDocuments(page, size, null);
+    }
+
+    /**
+     * List documents, optionally narrowed to one project.
+     *
+     * <p>Failures propagate on purpose. This used to swallow every exception and
+     * return an empty page, which the portal rendered as "No documents." — so a
+     * Qdrant timeout looked exactly like an empty knowledge base and documents
+     * appeared to vanish and come back on their own. The caller decides what to
+     * show; it cannot decide if it is never told.</p>
+     */
+    public RagDocumentListResponse listDocuments(int page, int size, String projectName) {
         if (!internal()) {
             return ragClient.listDocuments(page, size);
         }
-        try {
-            return documentService.listDocuments(companyId(), page, size);
-        } catch (Exception e) {
-            log.error("Internal RAG list failed: {}", e.getMessage(), e);
-            return RagDocumentListResponse.builder()
-                    .documents(Collections.emptyList())
-                    .totalDocuments(0)
-                    .page(page)
-                    .size(size)
-                    .totalPages(0)
-                    .build();
+        return documentService.listDocuments(companyId(), page, size, projectName);
+    }
+
+    /**
+     * Whether the knowledge base can actually be reached right now — a real
+     * probe when running the internal lane, the configuration flag otherwise
+     * (the remote client has nothing cheap to ping).
+     */
+    public boolean healthy() {
+        if (!internal()) {
+            return ragClient.isEnabled();
         }
+        return documentService.isVectorStoreHealthy();
     }
 
     public Map<String, Object> deleteDocument(String fileName) {

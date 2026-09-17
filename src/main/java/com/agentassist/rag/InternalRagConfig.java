@@ -1,5 +1,17 @@
 package com.agentassist.rag;
 
+import io.grpc.ManagedChannel;
+import org.springframework.ai.document.MetadataMode;
+import org.springframework.ai.openai.OpenAiEmbeddingOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +24,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Beans for the in-app RAG lane.
@@ -29,13 +43,64 @@ import org.springframework.context.annotation.Configuration;
 public class InternalRagConfig {
 
     private final InternalRagProperties properties;
+    private final RestClient.Builder restClientBuilder;
+    private final RetryTemplate retryTemplate;
 
+    @Value("${spring.ai.openai.api-key}")
+    private String openAiApiKey;
+
+    @Value("${spring.ai.openai.base-url:https://api.openai.com}")
+    private String openAiBaseUrl;
+
+    @Value("${spring.ai.openai.embedding.options.model:text-embedding-3-small}")
+    private String openAiEmbeddingModelName;
+
+    /**
+     * A warm embedding call takes ~0.5s, but the FIRST call on a cold connection
+     * pays DNS + TCP + TLS to api.openai.com — measured at 9.2s locally. 10s
+     * would have turned that cold start into a timeout, and the retry pays the
+     * same handshake again. 20s clears the handshake with room to spare while
+     * still bounding a genuine stall at a third of what it cost before.
+     */
+    @Value("${rag.internal.embedding.timeout-seconds:20}")
+    private int embeddingTimeoutSeconds;
+
+    /**
+     * Qdrant client over a tuned gRPC channel.
+     *
+     * <p>The channel settings are not optional. Left at gRPC's defaults the
+     * channel holds one connection for 30 minutes and never learns when it dies
+     * underneath — the next call then sits PENDING until the caller's 30s
+     * deadline and surfaces to the portal as "no documents". Keepalive detects a
+     * dead connection in ~70s, and idling out after 5 minutes means a call after
+     * a quiet spell opens a fresh connection rather than trusting a stale one.
+     *
+     * <p>Values copied from bravishma-rag's {@code QdrantClientConfig}, which
+     * fixed the same failure ({@code UNAVAILABLE: io exception}) against this
+     * same Qdrant server. Part 4 copied the agent-assist lane but not that
+     * class, which is how this app ended up back on the untuned defaults.</p>
+     */
     @Bean
     public QdrantClient qdrantClient() {
         InternalRagProperties.Qdrant qdrant = properties.getQdrant();
-        return new QdrantClient(
-                QdrantGrpcClient.newBuilder(qdrant.getHost(), qdrant.getPort(), qdrant.isUseTls())
-                        .build());
+
+        NettyChannelBuilder builder = NettyChannelBuilder
+                .forAddress(qdrant.getHost(), qdrant.getPort())
+                .keepAliveTime(60, TimeUnit.SECONDS)
+                .keepAliveTimeout(10, TimeUnit.SECONDS)
+                .keepAliveWithoutCalls(true)
+                .idleTimeout(300, TimeUnit.SECONDS);
+
+        if (qdrant.isUseTls()) {
+            builder.useTransportSecurity();
+        } else {
+            builder.usePlaintext();
+        }
+
+        ManagedChannel channel = builder.build();
+        log.info("[InternalRag] Qdrant channel {}:{} (tls={}, keepalive 60s, idle 300s)",
+                qdrant.getHost(), qdrant.getPort(), qdrant.isUseTls());
+        return new QdrantClient(QdrantGrpcClient.newBuilder(channel).build());
     }
 
     /** The embedder the agent-assist lane uses for BOTH ingestion and search. */
@@ -53,14 +118,48 @@ public class InternalRagConfig {
                     properties.getQdrant().getCollection());
             return model;
         }
-        OpenAiEmbeddingModel model = openAi.getIfAvailable();
-        if (model == null) {
+        if (openAi.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "rag.internal.embedding.provider=openai but no OpenAI embedding model is configured");
         }
-        log.info("[InternalRag] Embeddings: OPENAI (collection {})",
+        log.info("[InternalRag] Embeddings: OPENAI model={} timeout={}s (collection {})",
+                openAiEmbeddingModelName, embeddingTimeoutSeconds,
                 properties.getQdrant().getCollection());
-        return model;
+        return tightlyTimedOpenAiEmbeddings();
+    }
+
+    /**
+     * An OpenAI embedding model with its own, much shorter HTTP timeout.
+     *
+     * <p>Chat and embeddings share Spring AI's auto-configured client, whose
+     * read timeout has to be generous enough for a completion (60s). Embeddings
+     * have a completely different profile — a short query vectorises in well
+     * under a second — so that ceiling let one stalled call burn 59.6s of a
+     * 66s response before returning. Ten seconds is ~20x headroom for the work
+     * actually being done, and a stall now fails fast and is retried instead.
+     *
+     * <p>Deliberately NOT a replacement for the auto-configured
+     * {@code OpenAiEmbeddingModel} bean: this one is private to the RAG lane, so
+     * nothing else in the app changes behaviour.</p>
+     */
+    private EmbeddingModel tightlyTimedOpenAiEmbeddings() {
+        RestClient.Builder tightClient = restClientBuilder.clone()
+                .requestFactory(ClientHttpRequestFactories.get(
+                        ClientHttpRequestFactorySettings.DEFAULTS
+                                .withConnectTimeout(Duration.ofSeconds(5))
+                                .withReadTimeout(Duration.ofSeconds(embeddingTimeoutSeconds))));
+
+        OpenAiApi api = OpenAiApi.builder()
+                .apiKey(openAiApiKey)
+                .baseUrl(openAiBaseUrl)
+                .restClientBuilder(tightClient)
+                .build();
+
+        return new OpenAiEmbeddingModel(
+                api,
+                MetadataMode.EMBED,
+                OpenAiEmbeddingOptions.builder().model(openAiEmbeddingModelName).build(),
+                retryTemplate);
     }
 
     @Bean

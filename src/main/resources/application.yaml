@@ -25,7 +25,23 @@ spring:
       username: root
       password: root
       driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:com.mysql.cj.jdbc.Driver}
+      hikari:
+        # Headroom over the default 10. processMessage no longer holds a
+        # connection across its LLM calls, so these turn over quickly again;
+        # the larger pool is there for bursts, and the short connection-timeout
+        # means a starved caller fails fast instead of queueing behind a stall.
+        maximum-pool-size: ${DB_POOL_SIZE:20}
+        minimum-idle: 5
+        connection-timeout: 10000
+        leak-detection-threshold: 60000
   jpa:
+    # Hibernate otherwise holds the EntityManager — and its pooled JDBC
+    # connection — from the first repository call until the response is
+    # rendered. On a request that spends 60s in OpenAI, that pins a connection
+    # for the whole 60s even with no transaction open, which is what Hikari's
+    # leak detector caught. Safe to disable here: no entity has an association,
+    # so nothing is lazily initialised outside a transaction.
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -38,6 +54,17 @@ spring:
           # (shrinking any whose data happens to fit). See AaSchemaFilterProvider.
           schema_filter_provider: com.agentassist.configregistry.AaSchemaFilterProvider
   ai:
+    # Spring AI's defaults are 10 attempts backing off to 3 minutes apart — far
+    # past the point any caller is still waiting (nginx gives up at 60s). Three
+    # tries over ~7s rides out a transient 429 or a provider-side 5xx, such as
+    # the Cloudflare 520s api.openai.com returns during its own incidents,
+    # without holding a request thread for minutes.
+    retry:
+      max-attempts: 3
+      backoff:
+        initial-interval: 1s
+        multiplier: 2
+        max-interval: 10s
     openai:
       api-key: ${OPENAI_API_KEY:your-api-key-here}
       chat:
@@ -140,6 +167,11 @@ avaya:
 
 # Logging
 logging:
+  # [reqId] ties every line of one request together — see RequestTraceFilter.
+  # The same id comes back to the browser as the X-Request-Id response header,
+  # so a slow call in the Network tab gives you the exact string to grep.
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%-8.8X{reqId}] [%15.15t] %-40.40logger{39} : %m%n%wEx"
   level:
     root: INFO
     com.agentassist: DEBUG

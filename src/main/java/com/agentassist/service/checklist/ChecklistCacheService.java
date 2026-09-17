@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,6 +19,14 @@ public class ChecklistCacheService {
 
     // Cache TTL in seconds (30 minutes)
     private static final long CACHE_TTL_SECONDS = 1800;
+
+    /**
+     * Hard ceiling on entries. Expiry alone does not bound this map: an entry is
+     * only removed when someone reads it again, and a finished conversation is
+     * never read again — so without a cap every interaction the server ever
+     * handles stays on the heap until restart.
+     */
+    private static final int MAX_ENTRIES = 5000;
 
     // Cache entry with timestamp
     private record CacheEntry(ChecklistContext context, Instant timestamp) {}
@@ -60,6 +69,7 @@ public class ChecklistCacheService {
             return;
         }
         cache.put(interactionId, new CacheEntry(context, Instant.now()));
+        enforceCeiling();
         log.debug("[ChecklistCache] Cached context for interaction: {}, operation: {}",
                 interactionId, context.operationType());
     }
@@ -109,6 +119,30 @@ public class ChecklistCacheService {
         if (removed > 0) {
             log.info("[ChecklistCache] Cleaned up {} expired cache entries", removed);
         }
+    }
+
+    /**
+     * Keep the map bounded. Sweeps expired entries first; if that is not enough
+     * (a burst of live conversations), drops the oldest back to the ceiling.
+     * Runs only on the write that crosses the limit, so the cost is amortised.
+     */
+    private void enforceCeiling() {
+        if (cache.size() <= MAX_ENTRIES) {
+            return;
+        }
+        cleanupExpired();
+        int excess = cache.size() - MAX_ENTRIES;
+        if (excess <= 0) {
+            return;
+        }
+        cache.entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getValue().timestamp()))
+                .limit(excess)
+                .map(Map.Entry::getKey)
+                .toList()
+                .forEach(cache::remove);
+        log.warn("[ChecklistCache] Over capacity: evicted {} oldest entries (ceiling {})",
+                excess, MAX_ENTRIES);
     }
 
     private boolean isExpired(CacheEntry entry) {

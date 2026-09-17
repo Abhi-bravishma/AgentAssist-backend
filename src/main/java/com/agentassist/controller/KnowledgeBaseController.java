@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -80,9 +81,11 @@ public class KnowledgeBaseController {
     @GetMapping("/documents")
     public ResponseEntity<?> listDocuments(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String projectName) {
 
-        log.info("GET /api/v1/knowledge-base/documents - page: {}, size: {}", page, size);
+        log.info("GET /api/v1/knowledge-base/documents - page: {}, size: {}, project: {}",
+                page, size, projectName != null ? projectName : "ALL");
 
         if (!ragClient.isEnabled()) {
             return ResponseEntity.badRequest()
@@ -90,12 +93,15 @@ public class KnowledgeBaseController {
         }
 
         try {
-            RagDocumentListResponse response = ragClient.listDocuments(page, size);
+            RagDocumentListResponse response = ragClient.listDocuments(page, size, projectName);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            // 503, not 500: the knowledge base is unreachable, the request was
+            // fine. An empty 200 here is what made documents look like they
+            // vanished on their own.
             log.error("Failed to list documents", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of("error", "Failed to list documents: " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Knowledge base is unreachable: " + e.getMessage()));
         }
     }
 
@@ -187,11 +193,19 @@ public class KnowledgeBaseController {
     )
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {
+        boolean enabled = ragClient.isEnabled();
+        // "enabled" is configuration; "healthy" is a round-trip to the vector
+        // store. Reporting only the flag meant the portal badge stayed green
+        // while Qdrant was timing out, right next to an empty document list.
+        boolean healthy = enabled && ragClient.healthy();
         return ResponseEntity.ok(Map.of(
-                "enabled", ragClient.isEnabled(),
-                "message", ragClient.isEnabled()
-                        ? "Knowledge base integration is active"
-                        : "Knowledge base integration is disabled"
+                "enabled", enabled,
+                "healthy", healthy,
+                "message", !enabled
+                        ? "Knowledge base integration is disabled"
+                        : healthy
+                                ? "Knowledge base integration is active"
+                                : "Knowledge base is enabled but unreachable"
         ));
     }
 

@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -58,6 +59,8 @@ public class AgentAssistDocumentService {
     );
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
     private static final int QDRANT_TIMEOUT_SECONDS = 30;
+    /** The status badge must never hold a page load open. */
+    private static final int HEALTH_TIMEOUT_SECONDS = 3;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final VectorStore vectorStore;
@@ -225,12 +228,40 @@ public class AgentAssistDocumentService {
         }
     }
 
+    /**
+     * Is the vector store actually reachable right now?
+     *
+     * <p>A real round-trip, not a config flag. Used by the portal's status badge,
+     * which previously reported {@code rag.enabled} and so stayed green while
+     * Qdrant was timing out — the page then showed "connected" next to zero
+     * documents. Deliberately short-deadlined: a status badge must never be the
+     * thing that blocks a page load.</p>
+     */
+    public boolean isVectorStoreHealthy() {
+        try {
+            qdrantClient.healthCheckAsync(Duration.ofSeconds(HEALTH_TIMEOUT_SECONDS))
+                    .get(HEALTH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return true;
+        } catch (Exception e) {
+            log.warn("Qdrant health check failed: {}", e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return false;
+        }
+    }
+
     public RagDocumentListResponse listDocuments(Long companyId, int page, int size) {
-        log.info("Listing Agent Assist documents for companyId: {}, page: {}, size: {}", companyId, page, size);
+        return listDocuments(companyId, page, size, null);
+    }
+
+    public RagDocumentListResponse listDocuments(Long companyId, int page, int size, String projectName) {
+        log.info("Listing Agent Assist documents for companyId: {}, page: {}, size: {}, project: {}",
+                companyId, page, size, projectName != null ? projectName : "ALL");
 
         try {
             // Build filter for companyId AND useCase=agent_assist
-            Filter filter = Filter.newBuilder()
+            Filter.Builder filterBuilder = Filter.newBuilder()
                     .addMust(Condition.newBuilder()
                             .setField(FieldCondition.newBuilder()
                                     .setKey("companyId")
@@ -246,8 +277,24 @@ public class AgentAssistDocumentService {
                                             .setKeyword(USE_CASE_AGENT_ASSIST)
                                             .build())
                                     .build())
-                            .build())
-                    .build();
+                            .build());
+
+            // Filtering here rather than in the browser: the portal used to
+            // filter the 20 rows it had already loaded, so a project whose
+            // documents sat on page 2 was invisible in the dropdown and the
+            // totals still counted every project.
+            if (projectName != null && !projectName.isBlank()) {
+                filterBuilder.addMust(Condition.newBuilder()
+                        .setField(FieldCondition.newBuilder()
+                                .setKey("projectName")
+                                .setMatch(Match.newBuilder()
+                                        .setKeyword(projectName.trim())
+                                        .build())
+                                .build())
+                        .build());
+            }
+
+            Filter filter = filterBuilder.build();
 
             // Scroll through all points to get unique filenames
             Set<String> uniqueFileNames = new HashSet<>();
