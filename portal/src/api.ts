@@ -36,9 +36,13 @@ export interface KbDocumentList {
 const KB = '/api/v1/knowledge-base';
 
 export const kb = {
-  status: () => api<{ enabled: boolean; message: string }>(`${KB}/status`),
-  list: (page: number, size: number) =>
-    api<KbDocumentList>(`${KB}/documents?page=${page}&size=${size}`),
+  // `enabled` is configuration, `healthy` is a live round-trip to the vector store.
+  status: () => api<{ enabled: boolean; healthy: boolean; message: string }>(`${KB}/status`),
+  list: (page: number, size: number, projectName?: string) =>
+    api<KbDocumentList>(
+      `${KB}/documents?page=${page}&size=${size}` +
+        (projectName ? `&projectName=${encodeURIComponent(projectName)}` : ''),
+    ),
   upload: (files: FileList, projectName: string, category: string) => {
     const fd = new FormData();
     for (const f of Array.from(files)) fd.append('files', f);

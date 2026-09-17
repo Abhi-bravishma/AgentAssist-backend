@@ -34,7 +34,8 @@ export default function App() {
   const refreshHeader = async () => {
     try {
       const s = await kb.status();
-      setKbUp(s.enabled);
+      // healthy, not enabled: the flag stayed true while Qdrant was unreachable
+      setKbUp(s.healthy);
     } catch {
       setKbUp(false);
     }
