@@ -21,6 +21,7 @@ final class GatedSink implements Consumer<String> {
     private final Consumer<String> downstream;
     private final StringBuilder buffer = new StringBuilder();
     private State state = State.BUFFERING;
+    private boolean relayed;
 
     GatedSink(Consumer<String> downstream) {
         this.downstream = downstream;
@@ -30,7 +31,10 @@ final class GatedSink implements Consumer<String> {
     public synchronized void accept(String text) {
         switch (state) {
             case BUFFERING -> buffer.append(text);
-            case OPEN -> downstream.accept(text);
+            case OPEN -> {
+                relayed = true;
+                downstream.accept(text);
+            }
             case DISCARDED -> { /* the reply will not be shown; nothing to relay */ }
         }
     }
@@ -42,9 +46,15 @@ final class GatedSink implements Consumer<String> {
         }
         state = State.OPEN;
         if (buffer.length() > 0) {
+            relayed = true;
             downstream.accept(buffer.toString());
             buffer.setLength(0);
         }
+    }
+
+    /** Whether any reply text has actually reached the listener yet. */
+    synchronized boolean hasRelayed() {
+        return relayed;
     }
 
     /** The reply is not going to be used: drop what is held and what follows. */

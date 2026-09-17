@@ -32,7 +32,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -81,6 +84,14 @@ public class ConversationProcessingService {
     /** Kill switch back to strictly sequential processing, no rebuild needed. */
     @Value("${ai.pipeline.parallel-rag:true}")
     private boolean parallelRag;
+
+    /**
+     * How long the customer-data branch waits for a knowledge-base lookup that
+     * is still running when its own answer is already in hand. See
+     * {@link #retrievalWithinGrace}.
+     */
+    @Value("${ai.pipeline.checklist-rag-grace-ms:3000}")
+    private long checklistRagGraceMs;
 
     /**
      * Mutable per-request state threaded through the pipeline stages.
@@ -603,6 +614,45 @@ public class ConversationProcessingService {
         }
     }
 
+    /**
+     * Retrieval for the customer-data branch, which already has its answer in
+     * hand when it gets here. Retrieval started at kickoff and is normally done
+     * long before the Salesforce lookup and the analysis are, so a lookup still
+     * running now is almost certainly stalled - a hung embedding call once held
+     * a ready reply for 30s while its summary was already on screen. So this
+     * waits a short grace period and then gives up, unless the knowledge-base
+     * reply has started streaming: then it is healthy and about to finish, and
+     * swapping it out mid-sentence would be worse than the wait.
+     *
+     * @return the result, or null when it gave up; the lookup keeps running in
+     *         the background and whatever it produces is dropped.
+     */
+    private AnalysisService.RagSuggestionsResult retrievalWithinGrace(Pipeline ctx) {
+        if (ctx.ragInFlight == null) {
+            return retrieval(ctx);
+        }
+        try {
+            return ctx.ragInFlight.get(checklistRagGraceMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            if (ctx.replyGate != null && ctx.replyGate.hasRelayed()) {
+                return retrieval(ctx);
+            }
+            if (ctx.replyGate != null) {
+                ctx.replyGate.discard(); // nothing from the abandoned lookup may reach the screen
+            }
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for retrieval", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new CompletionException(cause);
+        }
+    }
+
     // ==================== stage 8: suggestions (branch dispatch) ====================
 
     private void buildSuggestions(Pipeline ctx) {
@@ -660,7 +710,15 @@ public class ConversationProcessingService {
         List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
 
         if (analysisService.isRagEnabled() && !isSimpleMessage) {
-            var ragResult = retrieval(ctx);
+            var ragResult = retrievalWithinGrace(ctx);
+            if (ragResult == null) {
+                ctx.suggestions = checklistSuggestions;
+                ctx.knowledgeSources = Collections.emptyList();
+                log.warn("[Process] Knowledge base still busy {}ms after the {} answer was ready and no reply "
+                        + "started - using CHECKLIST suggestion", checklistRagGraceMs,
+                        ctx.checklistContext.operationType());
+                return;
+            }
             ctx.documentsFound = ragResult.documentsFound();
             ctx.knowledgeSources = ragResult.knowledgeSources();
             ctx.usedKnowledgeBase = ragResult.usedKnowledgeBase();
