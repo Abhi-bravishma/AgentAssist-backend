@@ -29,3 +29,6 @@ out/
 
 # Test files
 test-knowledge.txt
+
+# Runtime KB file storage (docker volume, uploaded documents)
+agent-assist-files/

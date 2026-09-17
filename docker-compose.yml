@@ -1,26 +1,92 @@
+# Production deploy — lives in /opt/agent-assist/ on the server.
+#
+# Expected next to this file (see DEPLOY.md):
+#   agentassist.war     the Boot WAR, copied from target/
+#   portal-dist/        the built portal, copied from portal/dist/
+#   nginx/              the vhosts: portal.conf (UI) + api.conf (backend)
+#
+# Bridge networking with published ports, so `docker ps` shows the mappings.
+# Inside the bridge, nginx reaches the backend by service name (api:9099) and
+# the backend reaches the host's postgres via host.docker.internal.
+
 services:
-  agent-assist:
-    build: .
-    container_name: agent-assist
-    network_mode: host
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agent-assist-portal-api
+    container_name: agent-assist-portal-api
+    ports:
+      - "9099:9099"
+    # localhost inside a bridged container is the container itself, so the
+    # host's postgres is reached through the gateway alias below.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5433/agentassist
+      SERVER_PORT: "9099"
+
+      # --- database (postgres already running on the host) ---
+      # agentassist_v2 keeps this stack off the schema the old production
+      # container is serving from. Point it back at /agentassist once the
+      # old app is retired.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:5440/agentassist_v2
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: Bravishma2026
+      SPRING_DATASOURCE_PASSWORD: PASTE_DB_PASSWORD_HERE
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
-      SERVER_PORT: "8085"
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      AI_PROVIDER: openai
+
+      # --- AI ---
+      # NOTE: the active provider is no longer the AI_PROVIDER env var. It is the
+      # ai.active_provider row in aa_setting (seeded 'openai'), switchable from
+      # the portal or PUT /api/v1/admin/config/ai-provider.
+      OPENAI_API_KEY: PASTE_OPENAI_KEY_HERE
+      OPENAI_MODEL: gpt-4o-mini
+      OLLAMA_BASE_URL: http://135.222.41.146:11434
+
+      # --- RAG: in-app lane (rag.mode=internal), Qdrant on the 74 box ---
+      RAG_MODE: internal
+      # Qdrant runs on this same host. From a bridged container the box's
+      # public IP has to hairpin out and back, which the firewall drops —
+      # it hangs for 30s and fails. Go through the gateway alias instead.
+      QDRANT_HOST: host.docker.internal
+      QDRANT_PORT: "6334"
+      QDRANT_COLLECTION: agent_assist_docs_openai
+      RAG_EMBEDDING_PROVIDER: openai
+      RAG_COMPANY_ID: "1"
+      AGENT_ASSIST_FILES_PATH: /app/agent-assist-files
+      # legacy HTTP client — only read when RAG_MODE=remote (rollback path)
       RAG_BASE_URL: http://74.225.250.214:8080
       RAG_ENABLED: "true"
       RAG_API_KEY: agent-assist-secret-key-change-in-production
-      SALESFORCE_exiBASE_URL: https://salesforce.lab.bravishma.com
+
+      # --- integrations ---
+      SALESFORCE_BASE_URL: https://salesforce.lab.bravishma.com
       SALESFORCE_ENABLED: "true"
       AVAYA_BASE_URL: https://core.showmeavayacom.ec.avayacloud.com
       AVAYA_CLIENT_ID: transcript-api-01-001d010908da20232d07611320
-      AVAYA_CLIENT_SECRET: ${AVAYA_CLIENT_SECRET}
-      AVAYA_TIMEOUT: "30000"
+      # AVAYA_CLIENT_SECRET is omitted on purpose: application.yaml carries a
+      # working default, so Avaya keeps running as it does today.
+
+      JWT_SECRET: PASTE_64_CHAR_JWT_SECRET_HERE
+
+      # prod log levels — the yaml defaults are DEBUG and print prompts plus
+      # customer message text on every request
+      LOGGING_LEVEL_COM_AGENTASSIST: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_AI: INFO
     volumes:
       - ./agent-assist-files:/app/agent-assist-files
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: agent-assist-portal-web
+    container_name: agent-assist-portal-web
+    # Bound to localhost only, like the other apps on this box: the host nginx
+    # is the one thing that reaches it, and it terminates TLS in front.
+    ports:
+      - "127.0.0.1:4005:80"
+    depends_on:
+      - api
     restart: unless-stopped
