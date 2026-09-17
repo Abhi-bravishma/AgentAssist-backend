@@ -390,3 +390,39 @@ tbody tr:hover td.actions .link { opacity: 1; }
   z-index: 1;
   background: var(--panel);
 }
+
+/* ============================================================
+   Test chat: live pieces
+   ============================================================ */
+.live-pending { color: var(--muted); font-style: italic; font-size: 13px; }
+.stream-text { white-space: pre-wrap; }
+.stream-text.streaming::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--accent);
+  animation: caret 1s steps(2, start) infinite;
+}
+@keyframes caret { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .stream-text.streaming::after { animation: none; } }
+.piece-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 8px 0 4px; }
+
+/* Test chat: per-message timing strip */
+.timing {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+  margin: -2px 0 10px; padding-bottom: 8px; border-bottom: 1px dashed var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.timing .t-total { color: var(--text); font-weight: 600; }
+.timing .t-total.running::after {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 1px;
+  border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite;
+}
+.timing .t-piece b { color: var(--text); font-weight: 600; }
+.timing .t-piece i { font-style: normal; opacity: .75; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .timing .t-total.running::after { animation: none; } }

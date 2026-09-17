@@ -223,6 +223,18 @@ export interface ProcessResponse {
   projectName: string | null;
 }
 
+const RESULTS = '/api/v1/agent-assistant/results';
+
+export interface SentimentPiece {
+  processId: string; status: string;
+  overallSentiment: number; currentSentiment: number; label?: string;
+}
+export interface SuggestedPiece {
+  suggestedResponses: { englishReply: string; userLanguageReply?: string | null }[];
+  knowledgeSources: KnowledgeSource[];
+  documentsFound: number; usedKnowledgeBase: boolean;
+}
+
 export const chat = {
   process: (p: {
     interactionId: string; from: 'customer' | 'user'; message: string;
@@ -233,4 +245,25 @@ export const chat = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }),
+
+  // ---- piece-by-piece delivery (POST once, then read each piece as it lands) ----
+  processAsync: (p: {
+    interactionId: string; from: 'customer' | 'user'; message: string;
+    projectName: string; mobileNumber?: string;
+  }) =>
+    api<{ processId: string; interactionId: string; status: string }>(
+      '/api/v1/agent-assistant/process/async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
+      }),
+  /** 200 with the piece, 202 while pending, 5xx if the run failed. */
+  sentiment: async (processId: string) => {
+    const res = await fetch(`${RESULTS}/${processId}/sentiment`);
+    const body = res.status === 200 ? await res.json() : null;
+    return { status: res.status, body: body as SentimentPiece | null };
+  },
+  sentimentSseUrl: (processId: string) => `${RESULTS}/${processId}/sentiment/sse`,
+  summarySseUrl: (processId: string) => `${RESULTS}/${processId}/convo-summary/sse`,
+  suggestedSseUrl: (processId: string) => `${RESULTS}/${processId}/suggested-response/sse`,
 };
