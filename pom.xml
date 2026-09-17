@@ -126,6 +126,15 @@
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
 
+		<!-- Local language detection: replaces a ~1s OpenAI round-trip per message
+		     with an in-process n-gram classifier (a few MB of profiles; Lingua's
+		     models would have cost hundreds of MB on this shared VM). -->
+		<dependency>
+			<groupId>com.optimaize.languagedetector</groupId>
+			<artifactId>language-detector</artifactId>
+			<version>0.6</version>
+		</dependency>
+
 		<dependency>
 			<groupId>com.mysql</groupId>
 			<artifactId>mysql-connector-j</artifactId>

@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Single entry point for knowledge-base operations. {@code rag.mode} decides:
@@ -81,6 +82,16 @@ public class RagGateway {
                                                 int suggestionCount,
                                                 String additionalContext,
                                                 String projectName) {
+        return getSuggestions(conversationHistory, latestMessage, suggestionCount, additionalContext, projectName, null);
+    }
+
+    /** As above; {@code tokenSink} streams the reply text when the internal lane generates it. */
+    public RagSuggestionResponse getSuggestions(List<String> conversationHistory,
+                                                String latestMessage,
+                                                int suggestionCount,
+                                                String additionalContext,
+                                                String projectName,
+                                                Consumer<String> tokenSink) {
         if (!internal()) {
             return ragClient.getSuggestions(conversationHistory, latestMessage,
                     suggestionCount, additionalContext, projectName);
@@ -98,7 +109,7 @@ public class RagGateway {
                 .projectName(projectName)
                 .build();
         try {
-            return suggestionService.generateSuggestions(request);
+            return suggestionService.generateSuggestions(request, tokenSink);
         } catch (Exception e) {
             // Mirror the old client: an unreachable knowledge base degrades to
             // "no suggestions", the caller's fallback logic handles the rest.

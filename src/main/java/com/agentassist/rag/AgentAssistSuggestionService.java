@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.function.Consumer;
 
 /**
  * COPY of bravishma-rag's {@code AgentAssistServiceImpl} (suggestion
@@ -47,6 +48,17 @@ public class AgentAssistSuggestionService {
     private final InternalRagProperties properties;
 
     public RagSuggestionResponse generateSuggestions(RagSuggestionRequest request) {
+        return generateSuggestions(request, null);
+    }
+
+    /**
+     * @param tokenSink receives the reply as the model writes it; null means no
+     *                  streaming. Only honoured when documents were found: when
+     *                  none were, the caller discards this answer in favour of
+     *                  the no-information reply, and streaming text that is about
+     *                  to be replaced would mislead the agent watching it.
+     */
+    public RagSuggestionResponse generateSuggestions(RagSuggestionRequest request, Consumer<String> tokenSink) {
         Long companyId = request.getCompanyId();
         log.info("Generating agent assist suggestions (internal) for companyId: {}", companyId);
 
@@ -121,7 +133,9 @@ public class AgentAssistSuggestionService {
                 "context", usedContext ? context : "No relevant documents found.",
                 "suggestion_count", String.valueOf(suggestionCount)));
 
-        String llmResponse = aiProviderFactory.active().complete(prompt);
+        String llmResponse = (tokenSink != null && usedContext)
+                ? aiProviderFactory.active().complete(prompt, tokenSink)
+                : aiProviderFactory.active().complete(prompt);
         if (llmResponse == null || llmResponse.isBlank()) {
             log.error("Failed to generate suggestions: LLM returned no content");
             return RagSuggestionResponse.builder()

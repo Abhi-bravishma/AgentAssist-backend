@@ -20,6 +20,20 @@ public interface AiProvider {
     String complete(String prompt);
 
     /**
+     * Same as {@link #complete(String)}, but hands each chunk of the reply to
+     * {@code onToken} as the model writes it, then returns the complete text -
+     * identical to what the non-streaming call returns. Implementations that
+     * cannot stream deliver the whole reply as a single chunk.
+     */
+    default String complete(String prompt, java.util.function.Consumer<String> onToken) {
+        String full = complete(prompt);
+        if (full != null && onToken != null) {
+            onToken.accept(full);
+        }
+        return full;
+    }
+
+    /**
      * Analyze a single text and return sentiment, summary, and suggestions.
      */
     AiAnalysisResult analyzeText(String text);
@@ -33,6 +47,12 @@ public interface AiProvider {
      */
     AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg);
 
+    /** Streaming variant: {@code rawToken} sees the model's JSON as it is written. Default does not stream. */
+    default AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg,
+                                                 java.util.function.Consumer<String> rawToken) {
+        return analyzeConversation(messages, latestUserMsg);
+    }
+
     /**
      * Analyze a full conversation with additional context (e.g., customer policy data).
      *
@@ -42,6 +62,11 @@ public interface AiProvider {
      * @return Analysis bundle with sentiment scores, summary, and suggestions
      */
     AiAnalysisBundle analyzeConversationWithContext(List<String> messages, String latestUserMsg, String policyContext);
+
+    default AiAnalysisBundle analyzeConversationWithContext(List<String> messages, String latestUserMsg, String policyContext,
+                                                            java.util.function.Consumer<String> rawToken) {
+        return analyzeConversationWithContext(messages, latestUserMsg, policyContext);
+    }
 
     /**
      * Translate text to English.
@@ -116,6 +141,12 @@ public interface AiProvider {
      */
     AiAnalysisBundle analyzeConversationWithChecklist(List<String> messages, String latestUserMsg,
                                                        String checklistContext, String operationType);
+
+    default AiAnalysisBundle analyzeConversationWithChecklist(List<String> messages, String latestUserMsg,
+                                                              String checklistContext, String operationType,
+                                                              java.util.function.Consumer<String> rawToken) {
+        return analyzeConversationWithChecklist(messages, latestUserMsg, checklistContext, operationType);
+    }
 
     /**
      * Detect the type of operation the customer is asking about.

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -56,10 +57,18 @@ public class AnalysisService {
     public AiAnalysisBundle analyzeConversationWithContext(List<String> englishConversation,
                                                             String latestMessage,
                                                             String policyContext) {
+        return analyzeConversationWithContext(englishConversation, latestMessage, policyContext, null);
+    }
+
+    /** As above; {@code rawToken} receives the analysis JSON as the model writes it. */
+    public AiAnalysisBundle analyzeConversationWithContext(List<String> englishConversation,
+                                                            String latestMessage,
+                                                            String policyContext,
+                                                            Consumer<String> rawToken) {
         if (policyContext == null || policyContext.isBlank()) {
-            return analyzeConversation(englishConversation, latestMessage);
+            return aiProviderFactory.active().analyzeConversation(englishConversation, latestMessage, rawToken);
         }
-        return aiProviderFactory.active().analyzeConversationWithContext(englishConversation, latestMessage, policyContext);
+        return aiProviderFactory.active().analyzeConversationWithContext(englishConversation, latestMessage, policyContext, rawToken);
     }
 
     /**
@@ -76,11 +85,20 @@ public class AnalysisService {
                                                               String latestMessage,
                                                               String checklistContext,
                                                               String operationType) {
+        return analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType, null);
+    }
+
+    /** As above; {@code rawToken} receives the analysis JSON as the model writes it. */
+    public AiAnalysisBundle analyzeConversationWithChecklist(List<String> englishConversation,
+                                                              String latestMessage,
+                                                              String checklistContext,
+                                                              String operationType,
+                                                              Consumer<String> rawToken) {
         if (checklistContext == null || checklistContext.isBlank()) {
-            return analyzeConversation(englishConversation, latestMessage);
+            return aiProviderFactory.active().analyzeConversation(englishConversation, latestMessage, rawToken);
         }
         log.info("Analyzing conversation with checklist context for operation: {}", operationType);
-        return aiProviderFactory.active().analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType);
+        return aiProviderFactory.active().analyzeConversationWithChecklist(englishConversation, latestMessage, checklistContext, operationType, rawToken);
     }
 
 
@@ -149,6 +167,12 @@ public class AnalysisService {
      * @return Result containing suggestions and knowledge sources used
      */
     public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages, String policyContext, String projectName) {
+        return buildReplySuggestionsWithRag(messages, policyContext, projectName, null);
+    }
+
+    /** As above; {@code tokenSink} receives the English reply as the model writes it. */
+    public RagSuggestionsResult buildReplySuggestionsWithRag(List<MessageEntity> messages, String policyContext,
+                                                             String projectName, Consumer<String> tokenSink) {
         if (messages == null || messages.isEmpty()) {
             return new RagSuggestionsResult(List.of(), List.of(), 0, false);
         }
@@ -194,7 +218,7 @@ public class AnalysisService {
         log.info("Fetching suggestions from RAG for latest message: {}, bilingualQuery: {}, projectName: {}",
                 latestMessage.length() > 50 ? latestMessage.substring(0, 50) + "..." : latestMessage,
                 bilingualQuery, projectName != null ? projectName : "ALL");
-        RagSuggestionResponse ragResponse = ragClient.getSuggestions(searchContext, latestMessage, 1, null, projectName);
+        RagSuggestionResponse ragResponse = ragClient.getSuggestions(searchContext, latestMessage, 1, null, projectName, tokenSink);
 
         // Handle blocked response
         if (ragResponse.isBlocked()) {

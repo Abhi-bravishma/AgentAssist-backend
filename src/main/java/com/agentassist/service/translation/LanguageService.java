@@ -3,6 +3,7 @@ package com.agentassist.service.translation;
 import com.agentassist.ai.AiProviderFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -11,6 +12,16 @@ import org.springframework.stereotype.Service;
 public class LanguageService {
 
     private final AiProviderFactory aiProviderFactory;
+    private final LocalLanguageDetector localDetector;
+
+    /**
+     * local  — in-process detector, model only when it is not confident (default)
+     * llm    — the model for every message, exactly as before
+     * shadow — the model decides; the local result is logged next to it so the
+     *          agreement rate can be read off real traffic before switching
+     */
+    @Value("${ai.language.detection:local}")
+    private String detectionMode;
 
     /**
      * Whether a language tag is one the pipeline can act on (plan §4.10):
@@ -37,7 +48,33 @@ public class LanguageService {
     }
 
     public String detectLanguage(String text) {
+        String mode = detectionMode == null ? "local" : detectionMode.trim().toLowerCase();
+        if ("llm".equals(mode)) {
+            return aiProviderFactory.active().detectLanguage(text);
+        }
+
+        LocalLanguageDetector.Detection local = localDetector.detect(text);
+
+        if ("shadow".equals(mode)) {
+            String llm = aiProviderFactory.active().detectLanguage(text);
+            log.info("[Language] shadow: local={} ({}, margin {}) llm={} {}",
+                    local.code(), pct(local.confidence()), pct(local.margin()), llm,
+                    local.code().equals(llm) ? "agree" : "DISAGREE");
+            return llm;
+        }
+
+        if (local.confident()) {
+            log.info("[Language] local: {} ({}, margin {}) - no model call", local.code(),
+                    pct(local.confidence()), pct(local.margin()));
+            return local.code();
+        }
+        log.info("[Language] local not confident ({} at {}, margin {}) - asking the model",
+                local.code(), pct(local.confidence()), pct(local.margin()));
         return aiProviderFactory.active().detectLanguage(text);
+    }
+
+    private static String pct(double v) {
+        return String.format("%.0f%%", v * 100);
     }
 
     /** Alias kept from the collapsed TranslationService (Part 3c). */

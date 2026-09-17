@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Conversation analysis, sentiment and suggestion (re)generation. Method
@@ -22,6 +23,7 @@ import java.util.Map;
 public class ConversationAnalyzer {
 
     private final ChatCaller chat;
+    private final ChatStreamer streamer;
     private final String providerName;
     private final PromptService promptService;
     private final ObjectMapper mapper;
@@ -56,6 +58,12 @@ public class ConversationAnalyzer {
     }
 
     public AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg) {
+        return analyzeConversation(messages, latestUserMsg, null);
+    }
+
+    /** As above; {@code rawToken} receives the model's JSON as it is written. */
+    public AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg,
+                                                Consumer<String> rawToken) {
         log.info("[AI:{}] analyzeConversation called, {} messages, latest msg length: {}",
                 providerName, messages.size(), latestUserMsg.length());
         long startTime = System.currentTimeMillis();
@@ -71,7 +79,7 @@ public class ConversationAnalyzer {
                     "message_count", String.valueOf(messages.size()),
                     "conversation", sb.toString()));
 
-            String content = chat.call(prompt);
+            String content = invoke(prompt, rawToken);
             if (content == null || content.isBlank()) {
                 log.warn("[AI:{}] analyzeConversation returned empty response, using fallback", providerName);
                 return fallbackBundle();
@@ -101,6 +109,12 @@ public class ConversationAnalyzer {
     }
 
     public AiAnalysisBundle analyzeConversationWithContext(List<String> messages, String latestUserMsg, String policyContext) {
+        return analyzeConversationWithContext(messages, latestUserMsg, policyContext, null);
+    }
+
+    /** As above; {@code rawToken} receives the model's JSON as it is written. */
+    public AiAnalysisBundle analyzeConversationWithContext(List<String> messages, String latestUserMsg,
+                                                           String policyContext, Consumer<String> rawToken) {
         log.info("[AI:{}] analyzeConversationWithContext called, {} messages, policy context: {}",
                 providerName, messages.size(), policyContext != null ? "yes" : "no");
         long startTime = System.currentTimeMillis();
@@ -121,7 +135,7 @@ public class ConversationAnalyzer {
                     "message_count", String.valueOf(messages.size()),
                     "conversation", sb.toString()));
 
-            String content = chat.call(prompt);
+            String content = invoke(prompt, rawToken);
             if (content == null || content.isBlank()) {
                 log.warn("[AI:{}] analyzeConversationWithContext returned empty response, using fallback", providerName);
                 return fallbackBundle();
@@ -150,6 +164,13 @@ public class ConversationAnalyzer {
 
     public AiAnalysisBundle analyzeConversationWithChecklist(List<String> messages, String latestUserMsg,
                                                              String checklistContext, String operationType) {
+        return analyzeConversationWithChecklist(messages, latestUserMsg, checklistContext, operationType, null);
+    }
+
+    /** As above; {@code rawToken} receives the model's JSON as it is written. */
+    public AiAnalysisBundle analyzeConversationWithChecklist(List<String> messages, String latestUserMsg,
+                                                             String checklistContext, String operationType,
+                                                             Consumer<String> rawToken) {
         log.info("[AI:{}] analyzeConversationWithChecklist called, {} messages, operation: {}",
                 providerName, messages.size(), operationType);
         long startTime = System.currentTimeMillis();
@@ -166,7 +187,7 @@ public class ConversationAnalyzer {
                     "message_count", String.valueOf(messages.size()),
                     "conversation", sb.toString()));
 
-            String content = chat.call(prompt);
+            String content = invoke(prompt, rawToken);
             if (content == null || content.isBlank()) {
                 log.warn("[AI:{}] analyzeConversationWithChecklist returned empty response, using fallback", providerName);
                 return fallbackBundle();
@@ -322,6 +343,18 @@ public class ConversationAnalyzer {
         f.setSummary("");
         f.setSuggestions(List.of());
         return f;
+    }
+
+    /**
+     * The blocking call unless a sink is present and a streamer was wired.
+     * The blocking path is the one the golden-test capture provider intercepts,
+     * so it stays exactly as it was for every caller that does not stream.
+     */
+    private String invoke(String prompt, Consumer<String> rawToken) {
+        if (rawToken == null || streamer == null) {
+            return chat.call(prompt);
+        }
+        return streamer.call(prompt, rawToken);
     }
 
     private AiAnalysisBundle fallbackBundle() {

@@ -34,6 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -116,11 +117,27 @@ public class ConversationProcessingService {
         /** Streaming hook; {@link PipelineListener#NONE} for the plain endpoint. */
         PipelineListener listener = PipelineListener.NONE;
 
+        /** Where suggested-reply tokens go while the model writes them; null = no streaming. */
+        Consumer<String> tokenSink;
+
         /**
          * Knowledge-base retrieval started before analysis and joined when the
          * suggestion branches need it. Null when this message will not hit RAG.
          */
         CompletableFuture<AnalysisService.RagSuggestionsResult> ragInFlight;
+
+        /** Intent classification (+ Salesforce fetch), started as soon as history is loaded. */
+        CompletableFuture<ChecklistContext> intentInFlight;
+
+        /**
+         * The analysis call, started before the intent is known whenever the
+         * prompt cannot depend on it (no mobile number, no cached customer
+         * data). Null when analysis has to wait for the intent.
+         */
+        CompletableFuture<AiAnalysisBundle> analysisInFlight;
+
+        /** Holds reply tokens until the intent says the reply will be shown. */
+        GatedSink replyGate;
 
         /** Stage name -> wall-clock ms, in execution order. Drives the TIMING line. */
         final Map<String, Long> timings = new LinkedHashMap<>();
@@ -180,13 +197,13 @@ public class ConversationProcessingService {
             stage(ctx, "conv", () -> initConversation(ctx));
             stage(ctx, "translate", () -> translateAndSave(ctx));
             stage(ctx, "history", () -> loadHistory(ctx));
+            stage(ctx, "kickoff", () -> kickoff(ctx));
             stage(ctx, "checklist", () -> resolveChecklist(ctx));
-            stage(ctx, "rag-start", () -> startRetrieval(ctx));
             stage(ctx, "analyze", () -> analyze(ctx));
             emitAnalysis(ctx);
             stage(ctx, "sentiment", () -> updateMessageSentiment(ctx));
             stage(ctx, "suggestions", () -> buildSuggestions(ctx));
-            ctx.listener.on("suggestions", ctx.suggestions);
+            ctx.listener.on("suggestions", suggestionsPayload(ctx));
             ConversationResponse resp = stageValue(ctx, "assemble", () -> assembleResponse(ctx));
 
             logTimings(ctx, System.currentTimeMillis() - startTime, null);
@@ -198,6 +215,16 @@ public class ConversationProcessingService {
         } finally {
             MDC.remove(RequestTraceFilter.INTERACTION);
         }
+    }
+
+    /** The suggested-reply piece, shaped like the matching fields of the response. */
+    private Map<String, Object> suggestionsPayload(Pipeline ctx) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("suggestedResponses", ctx.suggestions == null ? Collections.emptyList() : ctx.suggestions);
+        p.put("knowledgeSources", ctx.knowledgeSources == null ? Collections.emptyList() : ctx.knowledgeSources);
+        p.put("documentsFound", ctx.documentsFound);
+        p.put("usedKnowledgeBase", ctx.usedKnowledgeBase);
+        return p;
     }
 
     // ==================== stage timing ====================
@@ -320,6 +347,7 @@ public class ConversationProcessingService {
                         .build()
         );
         log.info("[Process] Message saved with ID: {}", ctx.saved.getId());
+        ctx.listener.on("message-saved", ctx.saved.getId());
     }
 
     // ==================== stage 5: history ====================
@@ -347,8 +375,10 @@ public class ConversationProcessingService {
 
         // Always detect intent for current message (filtered by projectName)
         // METRO: FEE_WAIVER, HOME_LOAN_CLOSURE | ALLIANZ: POLICY, CLAIMS | null: ALL
-        ctx.currentMessageContext = checklistService.buildChecklistContext(
-                ctx.englishConversation, ctx.originalConversation, ctx.mobileNumber, ctx.projectName);
+        ctx.currentMessageContext = ctx.intentInFlight != null
+                ? join(ctx.intentInFlight)
+                : checklistService.buildChecklistContext(
+                        ctx.englishConversation, ctx.originalConversation, ctx.mobileNumber, ctx.projectName);
         String currentIntent = ctx.currentMessageContext.operationType();
         log.info("[Process] Current message intent: {} (project: {})", currentIntent,
                 ctx.projectName != null ? ctx.projectName : "ALL");
@@ -367,12 +397,84 @@ public class ConversationProcessingService {
                     ctx.checklistContext.operationType());
             ctx.useChecklistForThisMessage = false; // Don't use checklist prompt
         }
+
+        // Retrieval has been running since kickoff. Now that the intent is known,
+        // its reply either gets shown - let the tokens through - or it does not
+        // (filtered intent, billing customer-data answer) - drop them.
+        if (ctx.replyGate != null) {
+            if (ctx.currentMessageContext.wasIntentFiltered() || !streamsReply(ctx)) {
+                ctx.replyGate.discard();
+            } else {
+                ctx.replyGate.open();
+            }
+        }
+    }
+
+    // ==================== stage 5.5: kickoff (everything that can start early) ====================
+
+    /**
+     * The moment history is loaded, three things can run at once: the intent
+     * call, knowledge-base retrieval, and - when the analysis prompt cannot
+     * depend on the intent - the analysis itself. Before this, they ran one
+     * after another and nothing reached the screen for ~2.7s; language
+     * detection, intent classification and analysis were three sequential
+     * round-trips to the model.
+     */
+    private void kickoff(Pipeline ctx) {
+        ctx.intentInFlight = CompletableFuture.supplyAsync(
+                () -> checklistService.buildChecklistContext(
+                        ctx.englishConversation, ctx.originalConversation, ctx.mobileNumber, ctx.projectName),
+                ragExecutor);
+        startRetrieval(ctx);
+        startAnalysisEarly(ctx);
+    }
+
+    /**
+     * Analysis can start before the intent only when its prompt is already
+     * settled: with no mobile number there can be no customer data for this
+     * message, and with no cached customer data from earlier messages nothing
+     * would be added as context - so the call is the plain analysis either way,
+     * exactly what {@link #analyze} would have chosen after the intent came back.
+     */
+    private void startAnalysisEarly(Pipeline ctx) {
+        boolean hasMobile = ctx.mobileNumber != null && !ctx.mobileNumber.isBlank();
+        ChecklistContext cached = checklistCacheService.get(ctx.interactionId);
+        boolean cachedCustomerData = cached != null && cached.hasContext();
+        if (hasMobile || cachedCustomerData) {
+            return;
+        }
+        Consumer<String> tap = ctx.listener == PipelineListener.NONE ? null : new AnalysisStreamTap(ctx.listener);
+        ctx.analysisInFlight = CompletableFuture.supplyAsync(
+                () -> analysisService.analyzeConversationWithContext(ctx.englishConversation, ctx.english, null, tap),
+                ragExecutor);
+    }
+
+    private static <T> T join(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw e;
+        }
     }
 
     // ==================== stage 6: AI analysis ====================
 
     private void analyze(Pipeline ctx) {
         log.debug("[Process] Step 6: Calling AI for analysis...");
+
+        if (ctx.analysisInFlight != null) {
+            // Started at kickoff: the plain analysis, which is what this branch
+            // would pick anyway with no mobile number and no cached data.
+            ctx.policyContext = null;
+            ctx.bundle = join(ctx.analysisInFlight);
+            log.info("[Process] AI analysis complete (started early) - overall: {}, current: {}",
+                    ctx.bundle.getOverall_sentiment_score(), ctx.bundle.getCurrent_sentiment_score());
+            return;
+        }
 
         // Build context from cached Salesforce data if available
         String salesforceContext = null;
@@ -381,18 +483,23 @@ public class ConversationProcessingService {
         }
         ctx.policyContext = salesforceContext;
 
+        // Only a streaming caller gets the streamed call. With no listener the
+        // analysis goes over the blocking path, byte-for-byte what /process did.
+        Consumer<String> tap = ctx.listener == PipelineListener.NONE ? null : new AnalysisStreamTap(ctx.listener);
+
         if (ctx.useChecklistForThisMessage && ctx.checklistContext != null && ctx.checklistContext.hasContext()) {
             // Use checklist-aware analysis (fee waiver / home loan closure)
             log.info("[Process] Using checklist-aware AI analysis for: {}", ctx.checklistContext.operationType());
             ctx.bundle = analysisService.analyzeConversationWithChecklist(
                     ctx.englishConversation, ctx.english,
                     ctx.checklistContext.getFullContext(),
-                    ctx.checklistContext.operationType());
+                    ctx.checklistContext.operationType(),
+                    tap);
         } else {
             // Standard analysis - use cached Salesforce data if available
             log.info("[Process] Using standard AI analysis with context: {}", ctx.policyContext != null ? "yes" : "no");
             ctx.bundle = analysisService.analyzeConversationWithContext(
-                    ctx.englishConversation, ctx.english, ctx.policyContext);
+                    ctx.englishConversation, ctx.english, ctx.policyContext, tap);
         }
 
         log.info("[Process] AI analysis complete - overall: {}, current: {}, usedChecklist: {}",
@@ -402,16 +509,24 @@ public class ConversationProcessingService {
 
     // ==================== stage 7: message sentiment ====================
 
-    /** Sentiment and summary are ready well before the knowledge-base answer. */
+    /**
+     * Sentiment and summary are ready well before the knowledge-base answer.
+     * Emitted as two events: they are separate pieces to every consumer, even
+     * though one analysis call produces both.
+     */
     private void emitAnalysis(Pipeline ctx) {
         if (ctx.bundle == null) {
             return;
         }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("overallSentiment", ctx.bundle.getOverall_sentiment_score());
-        payload.put("currentSentiment", ctx.bundle.getCurrent_sentiment_score());
-        payload.put("summary", ctx.bundle.getSummary());
-        ctx.listener.on("analysis", payload);
+        Map<String, Object> sentiment = new LinkedHashMap<>();
+        sentiment.put("overallSentiment", ctx.bundle.getOverall_sentiment_score());
+        sentiment.put("currentSentiment", ctx.bundle.getCurrent_sentiment_score());
+        sentiment.put("label", ctx.bundle.getCurrent_sentiment_label());
+        ctx.listener.on("sentiment", sentiment);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("summary", ctx.bundle.getSummary());
+        ctx.listener.on("summary", summary);
     }
 
     private void updateMessageSentiment(Pipeline ctx) {
@@ -441,21 +556,28 @@ public class ConversationProcessingService {
      * {@code ai.pipeline.parallel-rag=false} to go back to strictly sequential.
      */
     private void startRetrieval(Pipeline ctx) {
-        if (!parallelRag || !willUseRag(ctx)) {
+        // The intent is not known yet, so this is every message that *might*
+        // use the knowledge base. If the intent turns out to be filtered the
+        // result simply goes unused, and the gate keeps its tokens off screen.
+        if (!(ctx.isCustomer && analysisService.isRagEnabled() && !isGreetingOrSimpleMessage(ctx.english))) {
+            return;
+        }
+        ctx.replyGate = new GatedSink(chunk -> ctx.listener.on("suggestion-token", chunk));
+        ctx.tokenSink = ctx.replyGate;
+        if (!parallelRag) {
             return;
         }
         ctx.ragInFlight = CompletableFuture.supplyAsync(
-                () -> analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName),
+                () -> analysisService.buildReplySuggestionsWithRag(
+                        ctx.all, ctx.policyContext, ctx.projectName, ctx.tokenSink),
                 ragExecutor);
     }
 
-    /** The exact condition under which either suggestion branch calls RAG. */
-    private boolean willUseRag(Pipeline ctx) {
-        return ctx.isCustomer
-                && ctx.currentMessageContext != null
-                && !ctx.currentMessageContext.wasIntentFiltered()
-                && analysisService.isRagEnabled()
-                && !isGreetingOrSimpleMessage(ctx.english);
+    /** False only for the checklist branch's customer-data-only intents. */
+    private boolean streamsReply(Pipeline ctx) {
+        boolean checklistBranch = ctx.useChecklistForThisMessage
+                && ctx.checklistContext != null && ctx.checklistContext.hasContext();
+        return !(checklistBranch && IntentCodes.BILLING.equals(ctx.checklistContext.operationType()));
     }
 
     /**
@@ -466,7 +588,8 @@ public class ConversationProcessingService {
      */
     private AnalysisService.RagSuggestionsResult retrieval(Pipeline ctx) {
         if (ctx.ragInFlight == null) {
-            return analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+            return analysisService.buildReplySuggestionsWithRag(
+                    ctx.all, ctx.policyContext, ctx.projectName, ctx.tokenSink);
         }
         try {
             return ctx.ragInFlight.join();

@@ -20,6 +20,9 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.List;
+import com.agentassist.ai.support.ChatStreamer;
+import java.time.Duration;
+import java.util.function.Consumer;
 
 /**
  * Facade over the per-domain AI components (Part 2 split). The only
@@ -52,7 +55,8 @@ public abstract class BaseAiProvider implements AiProvider {
         // this::call keeps virtual dispatch — a subclass override of call()
         // (the golden capture provider) sees every component's prompt.
         ChatCaller chat = this::call;
-        this.conversationAnalyzer = new ConversationAnalyzer(chat, providerName, promptService, mapper);
+        ChatStreamer stream = this::callStreaming;
+        this.conversationAnalyzer = new ConversationAnalyzer(chat, stream, providerName, promptService, mapper);
         this.translationEngine = new TranslationEngine(chat, providerName, promptService, languageRegistryService);
         this.intentClassifier = new IntentClassifier(chat, providerName, promptService, intentRegistryService);
         this.followUpAnalyzer = new FollowUpAnalyzer(chat, providerName, promptService, mapper);
@@ -66,6 +70,11 @@ public abstract class BaseAiProvider implements AiProvider {
         return call(prompt);
     }
 
+    @Override
+    public String complete(String prompt, Consumer<String> onToken) {
+        return onToken == null ? call(prompt) : callStreaming(prompt, onToken);
+    }
+
     // ==================== conversation analysis ====================
 
     @Override
@@ -76,6 +85,24 @@ public abstract class BaseAiProvider implements AiProvider {
     @Override
     public AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg) {
         return conversationAnalyzer.analyzeConversation(messages, latestUserMsg);
+    }
+
+    @Override
+    public AiAnalysisBundle analyzeConversation(List<String> messages, String latestUserMsg, Consumer<String> rawToken) {
+        return conversationAnalyzer.analyzeConversation(messages, latestUserMsg, rawToken);
+    }
+
+    @Override
+    public AiAnalysisBundle analyzeConversationWithContext(List<String> messages, String latestUserMsg,
+                                                            String policyContext, Consumer<String> rawToken) {
+        return conversationAnalyzer.analyzeConversationWithContext(messages, latestUserMsg, policyContext, rawToken);
+    }
+
+    @Override
+    public AiAnalysisBundle analyzeConversationWithChecklist(List<String> messages, String latestUserMsg,
+                                                             String checklistContext, String operationType,
+                                                             Consumer<String> rawToken) {
+        return conversationAnalyzer.analyzeConversationWithChecklist(messages, latestUserMsg, checklistContext, operationType, rawToken);
     }
 
     @Override
@@ -142,6 +169,51 @@ public abstract class BaseAiProvider implements AiProvider {
     }
 
     // ==================== the provider-specific part ====================
+
+    /** Hard cap on one streamed reply; streaming goes over WebClient, outside the RestClient timeout. */
+    private static final Duration STREAM_TIMEOUT = Duration.ofSeconds(120);
+
+    /**
+     * Streaming counterpart of {@link #call}: same prompt, same model, but each
+     * chunk reaches {@code onToken} as it arrives. Returns the assembled text so
+     * callers parse exactly what they would have parsed from the blocking call.
+     *
+     * <p>A failure mid-stream returns null rather than the partial text - half a
+     * sentence parsed as a suggestion is worse than the caller's own fallback.</p>
+     */
+    protected String callStreaming(String promptText, Consumer<String> onToken) {
+        long startTime = System.currentTimeMillis();
+        StringBuilder full = new StringBuilder();
+        int[] chunks = {0};
+        try {
+            chatModel.stream(new Prompt(promptText))
+                    .doOnNext(r -> {
+                        if (r == null || r.getResult() == null || r.getResult().getOutput() == null) {
+                            return;
+                        }
+                        String text = r.getResult().getOutput().getText();
+                        if (text == null || text.isEmpty()) {
+                            return;
+                        }
+                        full.append(text);
+                        chunks[0]++;
+                        try {
+                            onToken.accept(text);
+                        } catch (Exception e) {
+                            log.debug("[AI:{}] token sink failed: {}", providerName, e.getMessage());
+                        }
+                    })
+                    .blockLast(STREAM_TIMEOUT);
+
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("[AI:{}] Streamed response in {}ms, prompt {} chars -> reply {} chars in {} chunks",
+                    providerName, duration, promptText.length(), full.length(), chunks[0]);
+            return full.length() == 0 ? null : full.toString();
+        } catch (Exception e) {
+            log.error("[AI:{}] Streaming model call failed: {} - {}", providerName, e.getClass().getSimpleName(), e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * Call the underlying chat model.
