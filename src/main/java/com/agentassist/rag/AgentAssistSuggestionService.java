@@ -103,6 +103,23 @@ public class AgentAssistSuggestionService {
 
         boolean usedContext = !docs.isEmpty();
 
+        // Nothing cleared the threshold and no extra context was supplied. Every
+        // caller discards the generated reply in this case - the pipeline falls
+        // back to the checklist answer, the analysis suggestion or the
+        // no-information template - so generating one only spends a model call
+        // and holds that fallback back for as long as the call takes.
+        String extraContext = request.getAdditionalContext();
+        if (docs.isEmpty() && (extraContext == null || extraContext.isBlank())) {
+            log.info("No relevant documents - skipping reply generation; caller falls back");
+            return RagSuggestionResponse.builder()
+                    .suggestions(Collections.emptyList())
+                    .sourceDocuments(Collections.emptyList())
+                    .documentsFound(0)
+                    .usedContext(false)
+                    .blocked(false)
+                    .build();
+        }
+
         // Extract source documents with metadata
         List<RagSourceDocument> sourceDocuments = extractSourceDocuments(docs);
 

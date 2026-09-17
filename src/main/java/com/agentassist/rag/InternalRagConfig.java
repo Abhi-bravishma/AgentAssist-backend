@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.retry.support.RetryTemplate;
+import org.springframework.ai.retry.TransientAiException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -44,7 +46,6 @@ public class InternalRagConfig {
 
     private final InternalRagProperties properties;
     private final RestClient.Builder restClientBuilder;
-    private final RetryTemplate retryTemplate;
 
     @Value("${spring.ai.openai.api-key}")
     private String openAiApiKey;
@@ -56,13 +57,14 @@ public class InternalRagConfig {
     private String openAiEmbeddingModelName;
 
     /**
-     * A warm embedding call takes ~0.5s, but the FIRST call on a cold connection
-     * pays DNS + TCP + TLS to api.openai.com — measured at 9.2s locally. 10s
-     * would have turned that cold start into a timeout, and the retry pays the
-     * same handshake again. 20s clears the handshake with room to spare while
-     * still bounding a genuine stall at a third of what it cost before.
+     * A healthy embedding call takes 0.5-2s; the connection is kept warm by
+     * {@code EmbeddingWarmupService}, so cold-start handshakes are not on the
+     * request path. Measured over two days, everything past ~12s was a stall
+     * that either never returned or returned far too late to matter, while
+     * sentiment and summary were already on screen. So: fail at 12s and let the
+     * caller fall back, rather than hold a finished answer hostage to this call.
      */
-    @Value("${rag.internal.embedding.timeout-seconds:20}")
+    @Value("${rag.internal.embedding.timeout-seconds:12}")
     private int embeddingTimeoutSeconds;
 
     /**
@@ -159,7 +161,23 @@ public class InternalRagConfig {
                 api,
                 MetadataMode.EMBED,
                 OpenAiEmbeddingOptions.builder().model(openAiEmbeddingModelName).build(),
-                retryTemplate);
+                embeddingRetryTemplate());
+    }
+
+    /**
+     * Two attempts, not the shared three - and read timeouts count as retryable.
+     * The shared template retries only {@code TransientAiException}, so a timed-out
+     * embedding call failed outright; one retry after a stall has succeeded in
+     * practice, two more just extend the wait. Chat completions keep the shared
+     * template untouched.
+     */
+    private static RetryTemplate embeddingRetryTemplate() {
+        return RetryTemplate.builder()
+                .maxAttempts(2)
+                .retryOn(TransientAiException.class)
+                .retryOn(RestClientException.class)
+                .exponentialBackoff(1000, 2.0, 4000)
+                .build();
     }
 
     @Bean
