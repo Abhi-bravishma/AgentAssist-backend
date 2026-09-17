@@ -16,17 +16,25 @@ import com.agentassist.service.checklist.ChecklistCacheService;
 import com.agentassist.service.checklist.ChecklistService;
 import com.agentassist.service.checklist.ChecklistService.ChecklistContext;
 import com.agentassist.service.conversation.ConversationService;
+import com.agentassist.config.RequestTraceFilter;
 import com.agentassist.service.conversation.MessageService;
 import com.agentassist.service.translation.LanguageService;
 import lombok.RequiredArgsConstructor;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Main message-processing pipeline (Part 3a restructure).
@@ -65,10 +73,21 @@ public class ConversationProcessingService {
     private final PromptService promptService;
     private final IntentRegistryService intentRegistryService;
 
+    /** By name, not by type: Boot contributes its own Executor beans. */
+    @Resource(name = "ragExecutor")
+    private Executor ragExecutor;
+
+    /** Kill switch back to strictly sequential processing, no rebuild needed. */
+    @Value("${ai.pipeline.parallel-rag:true}")
+    private boolean parallelRag;
+
     /**
      * Mutable per-request state threaded through the pipeline stages.
      * Package-private for tests.
      */
+    /** Above this, a request is logged at WARN with its breakdown. */
+    private static final long SLOW_REQUEST_MS = 15_000;
+
     static final class Pipeline {
         final String interactionId;
         final String from;
@@ -94,6 +113,18 @@ public class ConversationProcessingService {
         String policyContext;
         AiAnalysisBundle bundle;
 
+        /** Streaming hook; {@link PipelineListener#NONE} for the plain endpoint. */
+        PipelineListener listener = PipelineListener.NONE;
+
+        /**
+         * Knowledge-base retrieval started before analysis and joined when the
+         * suggestion branches need it. Null when this message will not hit RAG.
+         */
+        CompletableFuture<AnalysisService.RagSuggestionsResult> ragInFlight;
+
+        /** Stage name -> wall-clock ms, in execution order. Drives the TIMING line. */
+        final Map<String, Long> timings = new LinkedHashMap<>();
+
         List<SuggestedResponse> suggestions;
         List<KnowledgeSource> knowledgeSources;
         int documentsFound;
@@ -112,29 +143,122 @@ public class ConversationProcessingService {
     /**
      * Process message with optional mobile number and project name for filtering.
      */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    /**
+     * NOT transactional, deliberately. This method spends 20-60s in OpenAI,
+     * Qdrant and Salesforce calls; wrapping it held a pooled DB connection for
+     * that entire time, so ten concurrent conversations exhausted the default
+     * Hikari pool and blocked every other caller — the portal and login
+     * included. Each DB touch owns its own short transaction instead:
+     * {@code ConversationCreator} (REQUIRES_NEW), {@code MessageService#save},
+     * and the repository's own per-call transactions for reads. The sentiment
+     * update in stage 7 merges a detached entity, which is why it re-saves
+     * rather than relying on dirty checking.
+     */
     public ConversationResponse processMessage(String interactionId, String from, String messageText, String mobileNumber, String projectName) {
+        return processMessage(interactionId, from, messageText, mobileNumber, projectName, PipelineListener.NONE);
+    }
+
+    /**
+     * Same pipeline, with a listener that observes each stage as it completes.
+     * Used by the streaming endpoint; {@link PipelineListener#NONE} makes this
+     * identical to the call above.
+     */
+    public ConversationResponse processMessage(String interactionId, String from, String messageText,
+                                               String mobileNumber, String projectName,
+                                               PipelineListener listener) {
         log.info("[Process] Processing message - interactionId: {}, from: {}, length: {}, hasMobile: {}, projectName: {}",
                 interactionId, from, messageText.length(), mobileNumber != null && !mobileNumber.isBlank(),
                 projectName != null ? projectName : "ALL");
         long startTime = System.currentTimeMillis();
 
         Pipeline ctx = new Pipeline(interactionId, from, messageText, mobileNumber, projectName);
+        ctx.listener = listener;
+        MDC.put(RequestTraceFilter.INTERACTION, interactionId);
 
-        detectLanguage(ctx);
-        initConversation(ctx);
-        translateAndSave(ctx);
-        loadHistory(ctx);
-        resolveChecklist(ctx);
-        analyze(ctx);
-        updateMessageSentiment(ctx);
-        buildSuggestions(ctx);
-        ConversationResponse resp = assembleResponse(ctx);
+        try {
+            stage(ctx, "lang", () -> detectLanguage(ctx));
+            stage(ctx, "conv", () -> initConversation(ctx));
+            stage(ctx, "translate", () -> translateAndSave(ctx));
+            stage(ctx, "history", () -> loadHistory(ctx));
+            stage(ctx, "checklist", () -> resolveChecklist(ctx));
+            stage(ctx, "rag-start", () -> startRetrieval(ctx));
+            stage(ctx, "analyze", () -> analyze(ctx));
+            emitAnalysis(ctx);
+            stage(ctx, "sentiment", () -> updateMessageSentiment(ctx));
+            stage(ctx, "suggestions", () -> buildSuggestions(ctx));
+            ctx.listener.on("suggestions", ctx.suggestions);
+            ConversationResponse resp = stageValue(ctx, "assemble", () -> assembleResponse(ctx));
 
-        long duration = System.currentTimeMillis() - startTime;
-        log.info("[Process] Message processing completed in {}ms", duration);
+            logTimings(ctx, System.currentTimeMillis() - startTime, null);
+            return resp;
+        } catch (RuntimeException e) {
+            // A failed request is the one you most want the breakdown for.
+            logTimings(ctx, System.currentTimeMillis() - startTime, e);
+            throw e;
+        } finally {
+            MDC.remove(RequestTraceFilter.INTERACTION);
+        }
+    }
 
-        return resp;
+    // ==================== stage timing ====================
+
+    private void stage(Pipeline ctx, String name, Runnable body) {
+        stageValue(ctx, name, () -> {
+            body.run();
+            return null;
+        });
+    }
+
+    private <T> T stageValue(Pipeline ctx, String name, Supplier<T> body) {
+        long t0 = System.nanoTime();
+        try {
+            return body.get();
+        } finally {
+            // Recorded even when the stage throws, so the breakdown shows how far it got.
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            ctx.timings.put(name, ms);
+            ctx.listener.on("stage", Map.of("stage", name, "ms", ms));
+        }
+    }
+
+    /**
+     * One line per request carrying the whole story: total, the stage that
+     * dominated it, every stage's cost, and the inputs that explain the cost
+     * (history size is the usual culprit — it goes into every prompt).
+     *
+     * <p>Grep a slow request by its interaction id or by the {@code X-Request-Id}
+     * the browser saw, then grep that request id to replay every line it
+     * produced across the AI, RAG and Salesforce classes.</p>
+     */
+    private void logTimings(Pipeline ctx, long totalMs, RuntimeException failure) {
+        String breakdown = ctx.timings.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(" "));
+        String slowest = ctx.timings.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(e -> e.getKey() + ":" + e.getValue() + "ms")
+                .orElse("-");
+        int historyChars = ctx.englishConversation == null ? 0
+                : ctx.englishConversation.stream().mapToInt(String::length).sum();
+
+        String summary = String.format(
+                "[Process] TIMING total=%dms slowest=%s | %s | interaction=%s from=%s lang=%s->%s "
+                        + "msgs=%d historyChars=%d intent=%s kbDocs=%d usedKb=%s%s",
+                totalMs, slowest, breakdown, ctx.interactionId, ctx.from,
+                ctx.detectedLang, ctx.replyLang,
+                ctx.all == null ? 0 : ctx.all.size(), historyChars,
+                ctx.checklistContext != null ? ctx.checklistContext.operationType() : "-",
+                ctx.documentsFound, ctx.usedKnowledgeBase,
+                failure == null ? "" : " FAILED=" + failure.getClass().getSimpleName());
+
+        if (failure != null) {
+            log.error(summary);
+        } else if (totalMs > SLOW_REQUEST_MS) {
+            // WARN so "the portal felt slow" becomes one greppable line, not a hunt.
+            log.warn("{} SLOW (>{}ms)", summary, SLOW_REQUEST_MS);
+        } else {
+            log.info(summary);
+        }
     }
 
     // ==================== stage 1: language detection ====================
@@ -278,6 +402,18 @@ public class ConversationProcessingService {
 
     // ==================== stage 7: message sentiment ====================
 
+    /** Sentiment and summary are ready well before the knowledge-base answer. */
+    private void emitAnalysis(Pipeline ctx) {
+        if (ctx.bundle == null) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("overallSentiment", ctx.bundle.getOverall_sentiment_score());
+        payload.put("currentSentiment", ctx.bundle.getCurrent_sentiment_score());
+        payload.put("summary", ctx.bundle.getSummary());
+        ctx.listener.on("analysis", payload);
+    }
+
     private void updateMessageSentiment(Pipeline ctx) {
         if (ctx.isCustomer) {
             ctx.saved.setSentiment(ctx.bundle.getCurrent_sentiment_label());
@@ -285,6 +421,62 @@ public class ConversationProcessingService {
             messageService.save(ctx.saved);
             log.debug("[Process] Updated message sentiment: {} ({})",
                     ctx.bundle.getCurrent_sentiment_label(), ctx.bundle.getCurrent_sentiment_score());
+        }
+    }
+
+    // ==================== stage 7.5: knowledge-base retrieval (concurrent) ====================
+
+    /**
+     * Starts knowledge-base retrieval so it runs alongside the analysis call
+     * instead of after it.
+     *
+     * <p>Both suggestion branches that use RAG call it with the same three
+     * arguments under the same guard, and every one of those inputs — history,
+     * policy context, project — is final by the end of the checklist stage. The
+     * branch decision itself does not depend on the analysis result either, so
+     * the call can be issued early and collected later.
+     *
+     * <p>Nothing about the request changes: same call, same arguments, same
+     * response. Only the waiting overlaps. Set
+     * {@code ai.pipeline.parallel-rag=false} to go back to strictly sequential.
+     */
+    private void startRetrieval(Pipeline ctx) {
+        if (!parallelRag || !willUseRag(ctx)) {
+            return;
+        }
+        ctx.ragInFlight = CompletableFuture.supplyAsync(
+                () -> analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName),
+                ragExecutor);
+    }
+
+    /** The exact condition under which either suggestion branch calls RAG. */
+    private boolean willUseRag(Pipeline ctx) {
+        return ctx.isCustomer
+                && ctx.currentMessageContext != null
+                && !ctx.currentMessageContext.wasIntentFiltered()
+                && analysisService.isRagEnabled()
+                && !isGreetingOrSimpleMessage(ctx.english);
+    }
+
+    /**
+     * The retrieval result, joined if it was started early, otherwise fetched
+     * synchronously. The fallback matters: if the prefetch condition and a
+     * branch ever drift apart, the branch still gets its answer the old way
+     * rather than silently losing its knowledge base.
+     */
+    private AnalysisService.RagSuggestionsResult retrieval(Pipeline ctx) {
+        if (ctx.ragInFlight == null) {
+            return analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+        }
+        try {
+            return ctx.ragInFlight.join();
+        } catch (CompletionException e) {
+            // Unwrap so callers see what they would have seen when this ran inline.
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw e;
         }
     }
 
@@ -345,7 +537,7 @@ public class ConversationProcessingService {
         List<SuggestedResponse> checklistSuggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
 
         if (analysisService.isRagEnabled() && !isSimpleMessage) {
-            var ragResult = analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+            var ragResult = retrieval(ctx);
             ctx.documentsFound = ragResult.documentsFound();
             ctx.knowledgeSources = ragResult.knowledgeSources();
             ctx.usedKnowledgeBase = ragResult.usedKnowledgeBase();
@@ -378,7 +570,7 @@ public class ConversationProcessingService {
         if (analysisService.isRagEnabled() && !isSimpleMessage) {
             // Use RAG for suggestions with knowledge base context + policy data
             log.info("[Process] Using RAG for suggestions with {} messages, projectName: {}...", ctx.all.size(), ctx.projectName);
-            var ragResult = analysisService.buildReplySuggestionsWithRag(ctx.all, ctx.policyContext, ctx.projectName);
+            var ragResult = retrieval(ctx);
             ctx.suggestions = ragResult.suggestions();
             ctx.knowledgeSources = ragResult.knowledgeSources();
             ctx.documentsFound = ragResult.documentsFound();

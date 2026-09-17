@@ -148,7 +148,7 @@ public abstract class BaseAiProvider implements AiProvider {
      */
     protected String call(String promptText) {
         try {
-            log.info("[AI:{}] Calling model, prompt length: {}", providerName, promptText.length());
+            log.debug("[AI:{}] Calling model, prompt length: {}", providerName, promptText.length());
             long startTime = System.currentTimeMillis();
 
             Prompt prompt = new Prompt(promptText);
@@ -162,7 +162,12 @@ public abstract class BaseAiProvider implements AiProvider {
             String content = response.getResult().getOutput().getText();
             long duration = System.currentTimeMillis() - startTime;
 
-            log.info("[AI:{}] Response received in {}ms, length: {}", providerName, duration, content != null ? content.length() : 0);
+            // Prompt size on the same line as the duration: a slow call is almost
+            // always a large prompt, and correlating two lines under concurrency
+            // was guesswork.
+            log.info("[AI:{}] Response in {}ms, prompt {} chars -> reply {} chars",
+                    providerName, duration, promptText.length(),
+                    content != null ? content.length() : 0);
             return content;
 
         } catch (Exception e) {
