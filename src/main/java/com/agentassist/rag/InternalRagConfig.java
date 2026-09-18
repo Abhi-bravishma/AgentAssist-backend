@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.retry.support.RetryTemplate;
-import org.springframework.ai.retry.TransientAiException;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -66,6 +64,10 @@ public class InternalRagConfig {
      */
     @Value("${rag.internal.embedding.timeout-seconds:12}")
     private int embeddingTimeoutSeconds;
+
+    /** When to fire a second and third attempt if the first has not answered; empty disables hedging. */
+    @Value("${rag.internal.embedding.hedge-delays-ms:1500,4000}")
+    private long[] embeddingHedgeDelaysMs;
 
     /**
      * Qdrant client over a tuned gRPC channel.
@@ -124,8 +126,8 @@ public class InternalRagConfig {
             throw new IllegalStateException(
                     "rag.internal.embedding.provider=openai but no OpenAI embedding model is configured");
         }
-        log.info("[InternalRag] Embeddings: OPENAI model={} timeout={}s (collection {})",
-                openAiEmbeddingModelName, embeddingTimeoutSeconds,
+        log.info("[InternalRag] Embeddings: OPENAI model={} timeout={}s hedges at {}ms (collection {})",
+                openAiEmbeddingModelName, embeddingTimeoutSeconds, embeddingHedgeDelaysMs,
                 properties.getQdrant().getCollection());
         return tightlyTimedOpenAiEmbeddings();
     }
@@ -138,7 +140,8 @@ public class InternalRagConfig {
      * have a completely different profile — a short query vectorises in well
      * under a second — so that ceiling let one stalled call burn 59.6s of a
      * 66s response before returning. Ten seconds is ~20x headroom for the work
-     * actually being done, and a stall now fails fast and is retried instead.
+     * actually being done. A stall is no longer retried after the timeout but
+     * hedged well before it - see {@link HedgedEmbeddingModel}.
      *
      * <p>Deliberately NOT a replacement for the auto-configured
      * {@code OpenAiEmbeddingModel} bean: this one is private to the RAG lane, so
@@ -157,27 +160,22 @@ public class InternalRagConfig {
                 .restClientBuilder(tightClient)
                 .build();
 
-        return new OpenAiEmbeddingModel(
+        OpenAiEmbeddingModel openAi = new OpenAiEmbeddingModel(
                 api,
                 MetadataMode.EMBED,
                 OpenAiEmbeddingOptions.builder().model(openAiEmbeddingModelName).build(),
-                embeddingRetryTemplate());
+                noRetry());
+        Duration attemptBudget = Duration.ofSeconds(5L + embeddingTimeoutSeconds); // connect + read
+        return new HedgedEmbeddingModel(openAi, embeddingHedgeDelaysMs, attemptBudget);
     }
 
     /**
-     * Two attempts, not the shared three - and read timeouts count as retryable.
-     * The shared template retries only {@code TransientAiException}, so a timed-out
-     * embedding call failed outright; one retry after a stall has succeeded in
-     * practice, two more just extend the wait. Chat completions keep the shared
-     * template untouched.
+     * No per-attempt retry: the hedge already fires a fresh attempt at 1.5s and
+     * 4s, which is the same idea applied when it still helps rather than after
+     * a 12s timeout. Chat completions keep the shared template untouched.
      */
-    private static RetryTemplate embeddingRetryTemplate() {
-        return RetryTemplate.builder()
-                .maxAttempts(2)
-                .retryOn(TransientAiException.class)
-                .retryOn(RestClientException.class)
-                .exponentialBackoff(1000, 2.0, 4000)
-                .build();
+    private static RetryTemplate noRetry() {
+        return RetryTemplate.builder().maxAttempts(1).build();
     }
 
     @Bean
