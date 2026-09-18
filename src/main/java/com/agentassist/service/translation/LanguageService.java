@@ -63,13 +63,19 @@ public class LanguageService {
             return llm;
         }
 
-        if (local.confident()) {
-            log.info("[Language] local: {} ({}, margin {}) - no model call", local.code(),
+        // The local detector only ever short-circuits for English. It is
+        // confidently wrong on short English lines that happen to be made of
+        // words another language also has ("how to do e sim setup" -> pt 100%),
+        // and a wrong non-English verdict on a first message would pin the whole
+        // conversation to that language. English is where the saved round-trip
+        // pays off anyway; everything else goes to the model, as it always did.
+        if (local.confident() && "en".equals(local.code())) {
+            log.info("[Language] local: en ({}, margin {}) - no model call",
                     pct(local.confidence()), pct(local.margin()));
-            return local.code();
+            return "en";
         }
-        log.info("[Language] local not confident ({} at {}, margin {}) - asking the model",
-                local.code(), pct(local.confidence()), pct(local.margin()));
+        log.info("[Language] local says {} ({}, margin {}{}) - asking the model", local.code(),
+                pct(local.confidence()), pct(local.margin()), local.confident() ? "" : ", not confident");
         return aiProviderFactory.active().detectLanguage(text);
     }
 
