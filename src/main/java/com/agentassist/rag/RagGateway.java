@@ -37,6 +37,8 @@ import java.util.function.Consumer;
 public class RagGateway {
 
     private final String mode;
+    /** Origin prefixed to document links handed out through the API; see app.public-url. */
+    private final String publicUrl;
     private final RagClient ragClient;
     private final RagClientConfig ragClientConfig;
     private final InternalRagProperties properties;
@@ -45,6 +47,7 @@ public class RagGateway {
     private final FileStorageService fileStorageService;
 
     public RagGateway(@Value("${rag.mode:internal}") String mode,
+                      @Value("${app.public-url:}") String publicUrl,
                       RagClient ragClient,
                       RagClientConfig ragClientConfig,
                       InternalRagProperties properties,
@@ -52,6 +55,7 @@ public class RagGateway {
                       AgentAssistDocumentService documentService,
                       FileStorageService fileStorageService) {
         this.mode = mode;
+        this.publicUrl = publicUrl == null ? "" : publicUrl.trim().replaceAll("/+$", "");
         this.ragClient = ragClient;
         this.ragClientConfig = ragClientConfig;
         this.properties = properties;
@@ -239,8 +243,12 @@ public class RagGateway {
             return null;
         }
         try {
+            // Absolute, because this link leaves the app: the widget hands it to a
+            // document viewer on another origin and pastes it to customers. The
+            // legacy remote lane always returned an absolute URL; the in-app lane
+            // briefly returned a relative one and previews broke.
             String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
-            return "/api/v1/knowledge-base/documents/download/" + encoded
+            return publicUrl + "/api/v1/knowledge-base/documents/download/" + encoded
                     + "?companyId=" + companyId();
         } catch (Exception e) {
             log.error("Failed to build download URL: {}", e.getMessage());

@@ -759,21 +759,17 @@ public class ConversationProcessingService {
             log.info("[Process] RAG returned {} suggestions, {} knowledge sources",
                     ctx.suggestions.size(), ctx.knowledgeSources.size());
 
-            // Knowledge base found nothing usable. Only fall back to the AI answer when
-            // there is real customer data behind it - otherwise the model has nothing to
-            // ground on and will invent figures (it quoted a 10% discount for a document
-            // that says 25%). An honest "I don't know" beats a confident wrong number.
+            // Knowledge base found nothing usable: say so. This branch is only reached
+            // for questions the classifier did NOT tie to the customer's account, so
+            // cached customer data is no grounding for them - with it in the prompt the
+            // model still invented SIM-activation steps when the documents were paused.
+            // Account questions the classifier recognises answer from customer data in
+            // the checklist branch; ones it misses are fixed in the intent rule, not here.
             if (ctx.documentsFound == 0 || ctx.suggestions.isEmpty()) {
-                boolean hasCustomerData = ctx.checklistContext != null && ctx.checklistContext.hasContext();
-                if (hasCustomerData && !ctx.bundle.getSuggestions().isEmpty()) {
-                    log.info("[Process] Knowledge base found nothing, using AI suggestions grounded in customer data");
-                    ctx.suggestions = toSuggestedResponses(ctx.bundle.getSuggestions(), ctx.replyLang);
-                } else {
-                    log.warn("[Process] Knowledge base found nothing and no customer data - returning no-information reply instead of an ungrounded answer");
-                    ctx.suggestions = toSuggestedResponses(List.of(
-                            promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
-                            ctx.replyLang);
-                }
+                log.warn("[Process] Knowledge base found nothing - returning no-information reply instead of an ungrounded answer");
+                ctx.suggestions = toSuggestedResponses(List.of(
+                        promptService.renderDefault(TemplateKeys.SYSTEM_NO_KNOWLEDGE_REPLY, Map.of())),
+                        ctx.replyLang);
             }
         } else if (isSimpleMessage) {
             // Skip RAG for greetings - use AI suggestions directly

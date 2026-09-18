@@ -166,6 +166,12 @@ avaya:
   timeout: ${AVAYA_TIMEOUT:30000}
 
 # Logging
+# Origin prefixed to links the API hands out (knowledgeSources[].downloadUrl).
+# The widget passes those to Google's document viewer and to customers, so they
+# must resolve from outside; the portal builds its own same-origin links.
+app:
+  public-url: ${APP_PUBLIC_URL:https://agent-assist-portal-api.demosaiportal.com}
+
 logging:
   # [reqId] ties every line of one request together — see RequestTraceFilter.
   # The same id comes back to the browser as the X-Request-Id response header,
